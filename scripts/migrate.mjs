@@ -5,9 +5,13 @@
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { neon } from '@neondatabase/serverless';
+import { Pool, neonConfig } from '@neondatabase/serverless';
+import ws from 'ws';
 
-// .env.local の DATABASE_URL を簡易的に読む
+// Node.js では WebSocket constructor を渡す必要がある
+neonConfig.webSocketConstructor = ws;
+
+// .env.local の値を簡易的に読む
 async function loadEnv() {
   if (process.env.DATABASE_URL) return;
   try {
@@ -16,7 +20,16 @@ async function loadEnv() {
     const txt = await readFile(envPath, 'utf-8');
     for (const line of txt.split('\n')) {
       const m = line.match(/^([A-Z_]+)=(.*)$/);
-      if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
+      if (m && !process.env[m[1]]) {
+        let v = m[2];
+        if (
+          (v.startsWith('"') && v.endsWith('"')) ||
+          (v.startsWith("'") && v.endsWith("'"))
+        ) {
+          v = v.slice(1, -1);
+        }
+        process.env[m[1]] = v;
+      }
     }
   } catch {
     // ignore
@@ -25,10 +38,8 @@ async function loadEnv() {
 
 await loadEnv();
 
-if (
-  !process.env.DATABASE_URL ||
-  process.env.DATABASE_URL.includes('placeholder')
-) {
+const url = process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL;
+if (!url || url.includes('placeholder')) {
   console.error(
     '❌ DATABASE_URL が設定されていません。.env.local に Neon 接続文字列を設定してください。',
   );
@@ -40,10 +51,14 @@ const sqlPath = join(__dirname, '..', 'db', 'schema.sql');
 const sqlContent = await readFile(sqlPath, 'utf-8');
 
 console.log('Connecting to Neon...');
-const sql = neon(process.env.DATABASE_URL);
+const pool = new Pool({ connectionString: url });
+const client = await pool.connect();
 
-console.log('Running schema migration...');
-// Neon serverless の sql.unsafe で複数ステートメント実行
-await sql.unsafe(sqlContent);
-
-console.log('✅ Migration complete.');
+try {
+  console.log('Running schema migration...');
+  await client.query(sqlContent);
+  console.log('✅ Migration complete.');
+} finally {
+  client.release();
+  await pool.end();
+}
