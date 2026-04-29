@@ -1,17 +1,19 @@
 // Neon Postgres スキーマを適用するスクリプト
-// 実行: DATABASE_URL=... node scripts/migrate.mjs
-// あるいは npm run db:migrate （.env.local の DATABASE_URL を使用）
+// 実行: npm run db:migrate （.env.local の DATABASE_URL を使用）
+//
+// 動作:
+//  1. db/schema.sql （初期スキーマ）を冪等に適用
+//  2. db/migrations/*.sql を名前順に冪等に適用
+// すべての SQL は IF NOT EXISTS / IF EXISTS を活用して再実行可能にしている。
 
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { Pool, neonConfig } from '@neondatabase/serverless';
 import ws from 'ws';
 
-// Node.js では WebSocket constructor を渡す必要がある
 neonConfig.webSocketConstructor = ws;
 
-// .env.local の値を簡易的に読む
 async function loadEnv() {
   if (process.env.DATABASE_URL) return;
   try {
@@ -47,17 +49,38 @@ if (!url || url.includes('placeholder')) {
 }
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const sqlPath = join(__dirname, '..', 'db', 'schema.sql');
-const sqlContent = await readFile(sqlPath, 'utf-8');
+const baseDir = join(__dirname, '..', 'db');
+
+async function loadAllSql() {
+  const files = [];
+  files.push({ name: 'schema.sql', path: join(baseDir, 'schema.sql') });
+
+  try {
+    const migDir = join(baseDir, 'migrations');
+    const list = (await readdir(migDir))
+      .filter((f) => f.endsWith('.sql'))
+      .sort();
+    for (const f of list) {
+      files.push({ name: `migrations/${f}`, path: join(migDir, f) });
+    }
+  } catch {
+    // migrations フォルダがない場合は無視
+  }
+  return files;
+}
 
 console.log('Connecting to Neon...');
 const pool = new Pool({ connectionString: url });
 const client = await pool.connect();
 
 try {
-  console.log('Running schema migration...');
-  await client.query(sqlContent);
-  console.log('✅ Migration complete.');
+  const files = await loadAllSql();
+  for (const file of files) {
+    const sql = await readFile(file.path, 'utf-8');
+    console.log(`Applying ${file.name}...`);
+    await client.query(sql);
+  }
+  console.log('✅ All migrations complete.');
 } finally {
   client.release();
   await pool.end();

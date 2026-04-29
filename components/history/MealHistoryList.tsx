@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { deleteMealAction } from '@/app/actions/meal';
-import type { MealLog } from '@/lib/types';
+import { MEAL_TYPE_ICONS, MEAL_TYPE_LABELS, type MealLog } from '@/lib/types';
 
 interface Props {
   logs: MealLog[];
@@ -61,14 +61,27 @@ export default function MealHistoryList({ logs }: Props) {
                   {Math.round(total.carbs_g)}
                 </div>
               </div>
-              <ul>
+              <ul className="divide-y divide-gray-100">
                 {items.map((l) => (
-                  <li
-                    key={l.id}
-                    className="px-4 py-3 border-b last:border-b-0 border-gray-100 flex items-start justify-between gap-3"
-                  >
+                  <li key={l.id} className="px-3 py-3 flex items-start gap-3">
+                    <div className="text-xl leading-none mt-0.5">
+                      {l.meal_type ? MEAL_TYPE_ICONS[l.meal_type] : '🍽️'}
+                    </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm tabular-nums">
+                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                        {l.time && (
+                          <span className="tabular-nums">{l.time}</span>
+                        )}
+                        {l.meal_type && (
+                          <span>{MEAL_TYPE_LABELS[l.meal_type]}</span>
+                        )}
+                      </div>
+                      {l.food_name && (
+                        <div className="text-sm font-medium truncate">
+                          {l.food_name}
+                        </div>
+                      )}
+                      <div className="text-sm tabular-nums mt-0.5">
                         <span className="font-semibold">
                           {Math.round(Number(l.calories))} kcal
                         </span>
@@ -87,7 +100,7 @@ export default function MealHistoryList({ logs }: Props) {
                     <button
                       onClick={() => handleDelete(l.id)}
                       disabled={pendingId === l.id}
-                      className="text-xs text-red-500 hover:text-red-700 disabled:text-gray-400 px-2"
+                      className="text-xs text-red-500 hover:text-red-700 disabled:text-gray-400 px-2 self-start"
                       aria-label="削除"
                     >
                       削除

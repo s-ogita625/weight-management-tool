@@ -1,6 +1,13 @@
 export type Gender = 'male' | 'female';
 export type TrainingFreq = 'none' | '1-2' | '3-4' | '5+';
 export type Period = '1mo' | '3mo' | '6mo' | '1yr';
+export type MealType =
+  | 'breakfast'
+  | 'lunch'
+  | 'dinner'
+  | 'snack'
+  | 'pre_workout'
+  | 'post_workout';
 
 export interface Profile {
   user_id: string;
@@ -21,12 +28,23 @@ export interface MealLog {
   id: string;
   user_id: string;
   date: string; // YYYY-MM-DD
+  time: string | null; // HH:MM:SS or null
+  meal_type: MealType | null;
+  food_name: string | null;
   calories: number;
   protein_g: number;
   fat_g: number;
   carbs_g: number;
   memo: string | null;
   created_at?: string;
+}
+
+export interface AiChatMessage {
+  id: string;
+  user_id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  created_at: string;
 }
 
 export const TRAINING_FREQ_LABELS: Record<TrainingFreq, string> = {
@@ -46,4 +64,22 @@ export const PERIOD_LABELS: Record<Period, string> = {
 export const GENDER_LABELS: Record<Gender, string> = {
   male: '男性',
   female: '女性',
+};
+
+export const MEAL_TYPE_LABELS: Record<MealType, string> = {
+  breakfast: '朝食',
+  lunch: '昼食',
+  dinner: '夕食',
+  snack: '間食',
+  pre_workout: '運動前',
+  post_workout: '運動後',
+};
+
+export const MEAL_TYPE_ICONS: Record<MealType, string> = {
+  breakfast: '🌅',
+  lunch: '🌞',
+  dinner: '🌙',
+  snack: '🍪',
+  pre_workout: '💪',
+  post_workout: '🏋️',
 };

@@ -1,7 +1,14 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { jwtVerify } from 'jose';
 
-const PROTECTED_PATHS = ['/onboarding', '/plan', '/log', '/history'];
+const PROTECTED_PATHS = [
+  '/onboarding',
+  '/plan',
+  '/log',
+  '/history',
+  '/coach',
+  '/chat',
+];
 const AUTH_PATHS = ['/login', '/signup'];
 const COOKIE_NAME = 'wm_session';
 
