@@ -12,8 +12,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  // ピンチズームを許可（アクセシビリティ要件）
   themeColor: '#2563eb',
 };
 
