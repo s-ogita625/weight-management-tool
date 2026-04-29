@@ -1,8 +1,7 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
+import { useActionState, useEffect, useRef, useState } from 'react';
+import { addMealAction } from '@/app/actions/meal';
 
 function todayLocal(): string {
   const d = new Date();
@@ -13,95 +12,58 @@ function todayLocal(): string {
 }
 
 export default function MealLogForm() {
-  const router = useRouter();
+  const [state, formAction, pending] = useActionState(addMealAction, null);
+  const formRef = useRef<HTMLFormElement>(null);
   const [date, setDate] = useState<string>(todayLocal());
-  const [calories, setCalories] = useState<number>(0);
-  const [protein, setProtein] = useState<number>(0);
-  const [fat, setFat] = useState<number>(0);
-  const [carbs, setCarbs] = useState<number>(0);
-  const [memo, setMemo] = useState<string>('');
-  const [error, setError] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
 
-  const reset = () => {
-    setCalories(0);
-    setProtein(0);
-    setFat(0);
-    setCarbs(0);
-    setMemo('');
-  };
-
-  const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setInfo(null);
-    setLoading(true);
-    const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      setError('ログインが必要です');
-      setLoading(false);
-      return;
+  useEffect(() => {
+    if (state && 'ok' in state && state.ok) {
+      formRef.current?.reset();
+      setDate(todayLocal());
     }
-    const { error } = await supabase.from('meal_logs').insert({
-      user_id: user.id,
-      date,
-      calories,
-      protein_g: protein,
-      fat_g: fat,
-      carbs_g: carbs,
-      memo: memo || null,
-    });
-    setLoading(false);
-    if (error) {
-      setError(error.message);
-      return;
-    }
-    setInfo('記録しました ✓');
-    reset();
-    router.refresh();
-  };
+  }, [state]);
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
+    <form action={formAction} ref={formRef} className="space-y-4">
       <div>
         <label className="block text-sm font-medium mb-1">日付</label>
         <input
           type="date"
+          name="date"
           value={date}
           onChange={(e) => setDate(e.target.value)}
           className="w-full h-12 px-4 rounded-xl border border-gray-300 bg-white"
         />
       </div>
 
-      <NF label="カロリー" suffix="kcal" value={calories} onChange={setCalories} />
-      <NF label="タンパク質" suffix="g" value={protein} onChange={setProtein} />
-      <NF label="脂質" suffix="g" value={fat} onChange={setFat} />
-      <NF label="炭水化物" suffix="g" value={carbs} onChange={setCarbs} />
+      <NF label="カロリー" suffix="kcal" name="calories" />
+      <NF label="タンパク質" suffix="g" name="protein_g" />
+      <NF label="脂質" suffix="g" name="fat_g" />
+      <NF label="炭水化物" suffix="g" name="carbs_g" />
 
       <div>
         <label className="block text-sm font-medium mb-1">メモ（任意）</label>
         <textarea
-          value={memo}
-          onChange={(e) => setMemo(e.target.value)}
+          name="memo"
           rows={2}
           className="w-full px-4 py-3 rounded-xl border border-gray-300 bg-white"
           placeholder="朝食・昼食など"
         />
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      {info && <p className="text-sm text-green-700">{info}</p>}
+      {state && 'error' in state && state.error && (
+        <p className="text-sm text-red-600">{state.error}</p>
+      )}
+      {state && 'ok' in state && state.ok && (
+        <p className="text-sm text-green-700">記録しました ✓</p>
+      )}
 
       <button
         type="submit"
-        disabled={loading}
+        disabled={pending}
         className="w-full h-12 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold rounded-xl"
       >
-        {loading ? '保存中...' : '記録を保存'}
+        {pending ? '保存中...' : '記録を保存'}
       </button>
     </form>
   );
@@ -110,13 +72,11 @@ export default function MealLogForm() {
 function NF({
   label,
   suffix,
-  value,
-  onChange,
+  name,
 }: {
   label: string;
   suffix: string;
-  value: number;
-  onChange: (v: number) => void;
+  name: string;
 }) {
   return (
     <div>
@@ -125,14 +85,11 @@ function NF({
       </label>
       <input
         type="number"
+        name={name}
         inputMode="decimal"
         min={0}
         step={0.1}
-        value={value}
-        onChange={(e) => {
-          const v = parseFloat(e.target.value);
-          onChange(isNaN(v) ? 0 : v);
-        }}
+        defaultValue={0}
         className="w-full h-12 px-4 rounded-xl border border-gray-300 bg-white text-lg"
       />
     </div>

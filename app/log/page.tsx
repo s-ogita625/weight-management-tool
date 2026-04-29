@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import MealLogForm from '@/components/forms/MealLogForm';
-import { createClient } from '@/lib/supabase/server';
+import { getSessionUserId } from '@/lib/auth';
+import { sql } from '@/lib/db';
 
 function todayISO() {
   const d = new Date();
@@ -10,21 +11,23 @@ function todayISO() {
 }
 
 export default async function LogPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
+  const userId = await getSessionUserId();
+  if (!userId) redirect('/login');
 
   const date = todayISO();
 
-  const { data: todays } = await supabase
-    .from('meal_logs')
-    .select('calories, protein_g, fat_g, carbs_g')
-    .eq('user_id', user.id)
-    .eq('date', date);
+  const rows = (await sql`
+    select calories, protein_g, fat_g, carbs_g
+    from meal_logs
+    where user_id = ${userId} and date = ${date}
+  `) as { calories: string | number; protein_g: string | number; fat_g: string | number; carbs_g: string | number }[];
 
-  const total = (todays ?? []).reduce(
+  const total = rows.reduce<{
+    calories: number;
+    protein_g: number;
+    fat_g: number;
+    carbs_g: number;
+  }>(
     (a, r) => ({
       calories: a.calories + Number(r.calories),
       protein_g: a.protein_g + Number(r.protein_g),

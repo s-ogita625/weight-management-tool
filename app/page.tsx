@@ -1,14 +1,12 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
+import { getSessionUserId } from '@/lib/auth';
+import { sql } from '@/lib/db';
 
 export default async function Home() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const userId = await getSessionUserId();
 
-  if (!user) {
+  if (!userId) {
     return (
       <div className="py-8">
         <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-3">
@@ -44,15 +42,9 @@ export default async function Home() {
     );
   }
 
-  // ログイン済 → プロフィール有無で振り分け
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('user_id')
-    .eq('user_id', user.id)
-    .maybeSingle();
+  const rows = (await sql`
+    select 1 from profiles where user_id = ${userId} limit 1
+  `) as unknown[];
 
-  if (!profile) {
-    redirect('/onboarding');
-  }
-  redirect('/plan');
+  redirect(rows.length > 0 ? '/plan' : '/onboarding');
 }

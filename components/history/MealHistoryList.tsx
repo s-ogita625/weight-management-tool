@@ -1,8 +1,7 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
+import { useState, useTransition } from 'react';
+import { deleteMealAction } from '@/app/actions/meal';
 import type { MealLog } from '@/lib/types';
 
 interface Props {
@@ -10,20 +9,16 @@ interface Props {
 }
 
 export default function MealHistoryList({ logs }: Props) {
-  const router = useRouter();
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [, startTransition] = useTransition();
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = (id: string) => {
     if (!confirm('この記録を削除しますか？')) return;
     setPendingId(id);
-    const supabase = createClient();
-    const { error } = await supabase.from('meal_logs').delete().eq('id', id);
-    setPendingId(null);
-    if (error) {
-      alert(error.message);
-      return;
-    }
-    router.refresh();
+    startTransition(async () => {
+      await deleteMealAction(id);
+      setPendingId(null);
+    });
   };
 
   if (logs.length === 0) {
@@ -34,7 +29,6 @@ export default function MealHistoryList({ logs }: Props) {
     );
   }
 
-  // 日付でグループ化
   const byDate: Record<string, MealLog[]> = {};
   logs.forEach((l) => {
     (byDate[l.date] ??= []).push(l);

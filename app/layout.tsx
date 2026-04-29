@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import BottomNav from '@/components/nav/BottomNav';
-import { createClient } from '@/lib/supabase/server';
+import { getSessionUserId } from '@/lib/auth';
 
 export const metadata: Metadata = {
   title: '体重管理ツール | 食事プラン計画',
@@ -22,10 +22,7 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const userId = await getSessionUserId();
 
   return (
     <html lang="ja" className="h-full antialiased">
@@ -33,7 +30,7 @@ export default async function RootLayout({
         <main className="flex-1 max-w-2xl w-full mx-auto px-4 pt-4 md:pt-8">
           {children}
         </main>
-        {user ? <BottomNav /> : null}
+        {userId ? <BottomNav /> : null}
       </body>
     </html>
   );

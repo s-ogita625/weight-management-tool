@@ -1,27 +1,38 @@
 import { redirect } from 'next/navigation';
 import PlanView from '@/components/forms/PlanView';
-import { createClient } from '@/lib/supabase/server';
+import { getSessionUserId } from '@/lib/auth';
+import { sql } from '@/lib/db';
 import type { Profile } from '@/lib/types';
 
 export default async function PlanPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
+  const userId = await getSessionUserId();
+  if (!userId) redirect('/login');
 
-  const { data } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('user_id', user.id)
-    .maybeSingle();
+  const rows = (await sql`
+    select * from profiles where user_id = ${userId} limit 1
+  `) as Profile[];
 
-  if (!data) redirect('/onboarding');
+  if (rows.length === 0) redirect('/onboarding');
+
+  // Postgres は数値を string で返す場合があるので明示的に Number 化
+  const r = rows[0];
+  const profile: Profile = {
+    user_id: r.user_id,
+    height_cm: Number(r.height_cm),
+    gender: r.gender,
+    age: Number(r.age),
+    current_weight_kg: Number(r.current_weight_kg),
+    body_fat_pct: Number(r.body_fat_pct),
+    training_freq: r.training_freq,
+    target_weight_kg: Number(r.target_weight_kg),
+    target_body_fat_pct: Number(r.target_body_fat_pct),
+    target_period: r.target_period,
+  };
 
   return (
     <div>
       <h1 className="text-2xl font-bold mt-4">食事プラン</h1>
-      <PlanView profile={data as Profile} />
+      <PlanView profile={profile} />
     </div>
   );
 }

@@ -1,8 +1,7 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
+import { useActionState, useState } from 'react';
+import { saveProfileAction } from '@/app/actions/profile';
 import {
   GENDER_LABELS,
   PERIOD_LABELS,
@@ -18,66 +17,36 @@ interface Props {
 }
 
 export default function ProfileForm({ initial }: Props) {
-  const router = useRouter();
-  const [age, setAge] = useState<number>(initial?.age ?? 30);
+  const [state, formAction, pending] = useActionState(saveProfileAction, null);
+
+  const [age, setAge] = useState<number>(initial ? Number(initial.age) : 30);
   const [gender, setGender] = useState<Gender>(initial?.gender ?? 'male');
-  const [heightCm, setHeightCm] = useState<number>(initial?.height_cm ?? 170);
+  const [heightCm, setHeightCm] = useState<number>(
+    initial ? Number(initial.height_cm) : 170,
+  );
   const [weightKg, setWeightKg] = useState<number>(
-    initial?.current_weight_kg ?? 65,
+    initial ? Number(initial.current_weight_kg) : 65,
   );
   const [bodyFatPct, setBodyFatPct] = useState<number>(
-    initial?.body_fat_pct ?? 20,
+    initial ? Number(initial.body_fat_pct) : 20,
   );
   const [trainingFreq, setTrainingFreq] = useState<TrainingFreq>(
     initial?.training_freq ?? '1-2',
   );
   const [targetWeightKg, setTargetWeightKg] = useState<number>(
-    initial?.target_weight_kg ?? 60,
+    initial ? Number(initial.target_weight_kg) : 60,
   );
   const [targetBodyFatPct, setTargetBodyFatPct] = useState<number>(
-    initial?.target_body_fat_pct ?? 15,
+    initial ? Number(initial.target_body_fat_pct) : 15,
   );
   const [period, setPeriod] = useState<Period>(initial?.target_period ?? '3mo');
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
-    const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      setError('ログインが必要です');
-      setLoading(false);
-      return;
-    }
-    const payload = {
-      user_id: user.id,
-      height_cm: heightCm,
-      gender,
-      age,
-      current_weight_kg: weightKg,
-      body_fat_pct: bodyFatPct,
-      training_freq: trainingFreq,
-      target_weight_kg: targetWeightKg,
-      target_body_fat_pct: targetBodyFatPct,
-      target_period: period,
-    };
-    const { error } = await supabase.from('profiles').upsert(payload);
-    setLoading(false);
-    if (error) {
-      setError(error.message);
-      return;
-    }
-    router.push('/plan');
-    router.refresh();
-  };
 
   return (
-    <form onSubmit={onSubmit} className="space-y-5">
+    <form action={formAction} className="space-y-5">
+      <input type="hidden" name="gender" value={gender} />
+      <input type="hidden" name="training_freq" value={trainingFreq} />
+      <input type="hidden" name="target_period" value={period} />
+
       {/* 性別 */}
       <div>
         <label className="block text-sm font-medium mb-2">性別</label>
@@ -99,19 +68,18 @@ export default function ProfileForm({ initial }: Props) {
         </div>
       </div>
 
-      {/* 年齢 */}
       <NumberField
         label="年齢"
+        name="age"
         value={age}
         onChange={setAge}
         min={10}
         max={100}
         suffix="歳"
       />
-
-      {/* 身長 */}
       <NumberField
         label="身長"
+        name="height_cm"
         value={heightCm}
         onChange={setHeightCm}
         min={100}
@@ -119,10 +87,9 @@ export default function ProfileForm({ initial }: Props) {
         step={0.1}
         suffix="cm"
       />
-
-      {/* 現在の体重 */}
       <NumberField
         label="現在の体重"
+        name="current_weight_kg"
         value={weightKg}
         onChange={setWeightKg}
         min={30}
@@ -130,10 +97,9 @@ export default function ProfileForm({ initial }: Props) {
         step={0.1}
         suffix="kg"
       />
-
-      {/* 現在の体脂肪率 */}
       <NumberField
         label="現在の体脂肪率"
+        name="body_fat_pct"
         value={bodyFatPct}
         onChange={setBodyFatPct}
         min={3}
@@ -165,9 +131,9 @@ export default function ProfileForm({ initial }: Props) {
 
       <hr className="border-gray-200" />
 
-      {/* 目標体重 */}
       <NumberField
         label="目標体重"
+        name="target_weight_kg"
         value={targetWeightKg}
         onChange={setTargetWeightKg}
         min={30}
@@ -175,10 +141,9 @@ export default function ProfileForm({ initial }: Props) {
         step={0.1}
         suffix="kg"
       />
-
-      {/* 目標体脂肪率 */}
       <NumberField
         label="目標体脂肪率"
+        name="target_body_fat_pct"
         value={targetBodyFatPct}
         onChange={setTargetBodyFatPct}
         min={3}
@@ -187,7 +152,6 @@ export default function ProfileForm({ initial }: Props) {
         suffix="%"
       />
 
-      {/* 期間 */}
       <div>
         <label className="block text-sm font-medium mb-2">達成期間</label>
         <div className="grid grid-cols-4 gap-2">
@@ -208,14 +172,14 @@ export default function ProfileForm({ initial }: Props) {
         </div>
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
 
       <button
         type="submit"
-        disabled={loading}
+        disabled={pending}
         className="w-full h-12 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold rounded-xl"
       >
-        {loading ? '保存中...' : '保存して食事プランを見る'}
+        {pending ? '保存中...' : '保存して食事プランを見る'}
       </button>
     </form>
   );
@@ -223,6 +187,7 @@ export default function ProfileForm({ initial }: Props) {
 
 function NumberField({
   label,
+  name,
   value,
   onChange,
   min,
@@ -231,6 +196,7 @@ function NumberField({
   suffix,
 }: {
   label: string;
+  name: string;
   value: number;
   onChange: (v: number) => void;
   min: number;
@@ -246,6 +212,7 @@ function NumberField({
       </label>
       <input
         type="number"
+        name={name}
         inputMode="decimal"
         value={value}
         min={min}

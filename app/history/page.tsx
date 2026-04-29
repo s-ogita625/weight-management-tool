@@ -1,30 +1,27 @@
 import { redirect } from 'next/navigation';
 import MealHistoryList from '@/components/history/MealHistoryList';
-import { createClient } from '@/lib/supabase/server';
+import { getSessionUserId } from '@/lib/auth';
+import { sql } from '@/lib/db';
 import type { MealLog } from '@/lib/types';
 
 export default async function HistoryPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
+  const userId = await getSessionUserId();
+  if (!userId) redirect('/login');
 
-  const { data } = await supabase
-    .from('meal_logs')
-    .select('*')
-    .eq('user_id', user.id)
-    .order('date', { ascending: false })
-    .order('created_at', { ascending: false })
-    .limit(200);
-
-  const logs = (data ?? []) as MealLog[];
+  const rows = (await sql`
+    select id, user_id, to_char(date, 'YYYY-MM-DD') as date,
+           calories, protein_g, fat_g, carbs_g, memo, created_at
+    from meal_logs
+    where user_id = ${userId}
+    order by date desc, created_at desc
+    limit 200
+  `) as MealLog[];
 
   return (
     <div className="py-4 space-y-4">
       <h1 className="text-2xl font-bold">食事履歴</h1>
       <p className="text-sm text-gray-600">直近 200 件まで表示します。</p>
-      <MealHistoryList logs={logs} />
+      <MealHistoryList logs={rows} />
     </div>
   );
 }
