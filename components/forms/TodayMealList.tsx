@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { deleteMealAction } from '@/app/actions/meal';
 import { MEAL_TYPE_ICONS, MEAL_TYPE_LABELS, type MealLog } from '@/lib/types';
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export default function TodayMealList({ logs }: Props) {
+  const router = useRouter();
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
@@ -18,6 +20,7 @@ export default function TodayMealList({ logs }: Props) {
     startTransition(async () => {
       await deleteMealAction(id);
       setPendingId(null);
+      router.refresh();
     });
   };
 

@@ -4,6 +4,9 @@ import { getSessionUserId } from '@/lib/auth';
 import { sql } from '@/lib/db';
 import type { MealLog } from '@/lib/types';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export default async function HistoryPage() {
   const userId = await getSessionUserId();
   if (!userId) redirect('/login');

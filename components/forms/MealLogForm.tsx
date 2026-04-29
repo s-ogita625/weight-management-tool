@@ -1,21 +1,13 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useActionState, useEffect, useRef, useState } from 'react';
 import { addMealAction } from '@/app/actions/meal';
+import { dateInJST, timeInJST } from '@/lib/date';
 import { MEAL_TYPE_ICONS, MEAL_TYPE_LABELS, type MealType } from '@/lib/types';
 
-function todayLocal(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function nowHHMM(): string {
-  const d = new Date();
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-}
-
 function suggestMealType(): MealType {
-  const h = new Date().getHours();
+  const h = Number(timeInJST().slice(0, 2));
   if (h >= 5 && h < 10) return 'breakfast';
   if (h >= 10 && h < 14) return 'lunch';
   if (h >= 14 && h < 17) return 'snack';
@@ -33,22 +25,26 @@ const MEAL_TYPES: MealType[] = [
 ];
 
 export default function MealLogForm() {
+  const router = useRouter();
   const [state, formAction, pending] = useActionState(addMealAction, null);
   const formRef = useRef<HTMLFormElement>(null);
 
-  const [date, setDate] = useState<string>(todayLocal());
-  const [time, setTime] = useState<string>(nowHHMM());
+  const [date, setDate] = useState<string>(dateInJST());
+  const [time, setTime] = useState<string>(timeInJST());
   const [mealType, setMealType] = useState<MealType>(suggestMealType());
   const [foodName, setFoodName] = useState<string>('');
 
   useEffect(() => {
     if (state && 'ok' in state && state.ok) {
       formRef.current?.reset();
-      setDate(todayLocal());
-      setTime(nowHHMM());
+      setDate(dateInJST());
+      setTime(timeInJST());
       setMealType(suggestMealType());
       setFoodName('');
+      // サーバーコンポーネント（本日の合計、本日の記録一覧）を再描画
+      router.refresh();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
   return (

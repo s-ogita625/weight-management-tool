@@ -3,21 +3,20 @@ import MealLogForm from '@/components/forms/MealLogForm';
 import TodayMealList from '@/components/forms/TodayMealList';
 import { calculate } from '@/lib/calculations';
 import { getSessionUserId } from '@/lib/auth';
+import { dateInJST } from '@/lib/date';
 import { sql } from '@/lib/db';
 import type { MealLog, Profile } from '@/lib/types';
 
-function todayISO() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
-    d.getDate(),
-  ).padStart(2, '0')}`;
-}
+// SSR を毎リクエスト実行してキャッシュを使わない
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export default async function LogPage() {
   const userId = await getSessionUserId();
   if (!userId) redirect('/login');
 
-  const date = todayISO();
+  // JST 基準で「今日」を計算（クライアントの dateInJST と一致させる）
+  const date = dateInJST();
 
   const [mealRowsRaw, profileRowsRaw] = await Promise.all([
     sql`
