@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { getSessionUserId } from '@/lib/auth';
 import { dateInJST } from '@/lib/date';
 import { sql } from '@/lib/db';
+import { getRecurringMonthlyTotal } from '@/lib/recurring';
 import type { DailyLog, MealLog, Profile } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -91,7 +92,10 @@ export default async function Home() {
     group by kind
   `) as unknown as Array<{ kind: 'income' | 'expense'; total: number }>;
   const income = txTotalsRows.find((r) => r.kind === 'income')?.total ?? 0;
-  const expense = txTotalsRows.find((r) => r.kind === 'expense')?.total ?? 0;
+  const expenseTx = txTotalsRows.find((r) => r.kind === 'expense')?.total ?? 0;
+  // 固定費を加算
+  const recurringTotal = await getRecurringMonthlyTotal(userId, ym);
+  const expense = expenseTx + recurringTotal;
 
   return (
     <div className="py-4 space-y-5">

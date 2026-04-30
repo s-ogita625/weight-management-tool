@@ -16,6 +16,7 @@ const moreItems = [
   { href: '/plan', label: '食事プラン', icon: '📊' },
   { href: '/trend', label: 'トレンド分析', icon: '📈' },
   { href: '/history', label: '食事履歴', icon: '📅' },
+  { href: '/budget/recurring', label: '固定費の管理', icon: '📌' },
   { href: '/coach', label: 'AIコーチング', icon: '💡' },
   { href: '/chat', label: 'AIチャット', icon: '💬' },
   { href: '/onboarding', label: 'プロフィール編集', icon: '⚙️' },

@@ -166,6 +166,25 @@ export const EXPENSE_CATEGORIES = [
   '衣服',
   'サプリ・プロテイン',
   'ジム',
+  'サブスク',
   '交際',
   'その他',
 ] as const;
+
+// =================
+// 固定費
+// =================
+export interface RecurringExpense {
+  id: string;
+  user_id: string;
+  name: string;
+  category: string;
+  amount: number;
+  billing_day: number; // 1-31
+  purpose: string | null;
+  start_month: string; // YYYY-MM
+  end_month: string | null; // YYYY-MM, null = 無期限
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
