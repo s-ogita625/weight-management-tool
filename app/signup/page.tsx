@@ -6,6 +6,6 @@ export const dynamic = 'force-dynamic';
 
 export default async function SignupPage() {
   const userId = await getSessionUserId();
-  if (userId) redirect('/plan');
+  if (userId) redirect('/');
   return <SignupForm />;
 }

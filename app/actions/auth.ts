@@ -29,11 +29,11 @@ export async function loginAction(_prev: unknown, formData: FormData) {
 
   await createSession(res.userId);
 
-  // プロフィールがあれば /plan、無ければ /onboarding
+  // プロフィールがあればダッシュボード(/)、無ければ /onboarding
   const rows = (await sql`
     select 1 from profiles where user_id = ${res.userId} limit 1
   `) as unknown[];
-  redirect(rows.length > 0 ? '/plan' : '/onboarding');
+  redirect(rows.length > 0 ? '/' : '/onboarding');
 }
 
 export async function logoutAction() {
