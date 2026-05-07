@@ -20,102 +20,258 @@ interface AdviceResponse {
   } | null;
 }
 
-export default function CoachView() {
-  const [data, setData] = useState<AdviceResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+interface WeeklyReportResponse {
+  report: string;
+  stats: AdviceResponse['stats'];
+  target: AdviceResponse['target'];
+  weightTrend: {
+    daysLogged: number;
+    deltaKg: number;
+    weeklyDeltaKg: number;
+    predicted30dKg: number | null;
+    r2: number;
+  } | null;
+}
 
-  const generate = async () => {
-    setLoading(true);
-    setError(null);
-    setData(null);
+type Tab = 'advice' | 'weekly';
+
+export default function CoachView() {
+  const [tab, setTab] = useState<Tab>('advice');
+
+  const [advice, setAdvice] = useState<AdviceResponse | null>(null);
+  const [adviceLoading, setAdviceLoading] = useState(false);
+  const [adviceError, setAdviceError] = useState<string | null>(null);
+
+  const [weekly, setWeekly] = useState<WeeklyReportResponse | null>(null);
+  const [weeklyLoading, setWeeklyLoading] = useState(false);
+  const [weeklyError, setWeeklyError] = useState<string | null>(null);
+
+  const generateAdvice = async () => {
+    setAdviceLoading(true);
+    setAdviceError(null);
+    setAdvice(null);
     try {
       const res = await fetch('/api/advice', { method: 'POST' });
       const json = await res.json();
       if (!res.ok) {
-        setError(json.error ?? 'エラーが発生しました');
+        setAdviceError(json.error ?? 'エラーが発生しました');
       } else {
-        setData(json);
+        setAdvice(json);
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      setAdviceError(e instanceof Error ? e.message : String(e));
     } finally {
-      setLoading(false);
+      setAdviceLoading(false);
+    }
+  };
+
+  const generateWeekly = async () => {
+    setWeeklyLoading(true);
+    setWeeklyError(null);
+    setWeekly(null);
+    try {
+      const res = await fetch('/api/weekly-report', { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok) {
+        setWeeklyError(json.error ?? 'エラーが発生しました');
+      } else {
+        setWeekly(json);
+      }
+    } catch (e: unknown) {
+      setWeeklyError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setWeeklyLoading(false);
     }
   };
 
   return (
     <div className="space-y-4">
-      {data && (
-        <>
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <h2 className="text-sm font-semibold text-gray-700 mb-3">
-              📊 直近14日の記録サマリー
-            </h2>
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <Stat label="記録日数" value={`${data.stats.daysLogged}日`} />
-              <Stat
-                label="連続記録"
-                value={`${data.stats.consecutiveDaysLogged}日`}
-              />
-              <Stat
-                label="平均カロリー"
-                value={`${data.stats.avgDailyCalories.toLocaleString()}kcal`}
-              />
-              <Stat
-                label="平均タンパク質"
-                value={`${data.stats.avgDailyProtein}g`}
-              />
-              {data.stats.daysLogged > 0 && data.target && (
-                <>
-                  <Stat
-                    label="カロリー達成率"
-                    value={`${data.stats.caloriesAdherencePct}%`}
-                    color={getAdherenceColor(data.stats.caloriesAdherencePct)}
-                  />
-                  <Stat
-                    label="タンパク質達成率"
-                    value={`${data.stats.proteinAdherencePct}%`}
-                    color={getAdherenceColor(data.stats.proteinAdherencePct)}
-                  />
-                </>
-              )}
-            </div>
-          </div>
+      {/* タブ切替 */}
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          onClick={() => setTab('advice')}
+          className={`h-11 rounded-xl border text-sm font-medium ${
+            tab === 'advice'
+              ? 'bg-blue-600 text-white border-blue-600'
+              : 'bg-white border-gray-300 text-gray-700'
+          }`}
+        >
+          💡 デイリーアドバイス
+        </button>
+        <button
+          onClick={() => setTab('weekly')}
+          className={`h-11 rounded-xl border text-sm font-medium ${
+            tab === 'weekly'
+              ? 'bg-blue-600 text-white border-blue-600'
+              : 'bg-white border-gray-300 text-gray-700'
+          }`}
+        >
+          📊 週次レポート
+        </button>
+      </div>
 
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <div className="text-sm font-semibold text-gray-700 mb-3">
-              🤖 AIからのアドバイス
+      {tab === 'advice' && (
+        <>
+          {advice && (
+            <>
+              <div className="bg-white rounded-xl border border-gray-200 p-4">
+                <h2 className="text-sm font-semibold text-gray-700 mb-3">
+                  📊 直近14日の記録サマリー
+                </h2>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <Stat
+                    label="記録日数"
+                    value={`${advice.stats.daysLogged}日`}
+                  />
+                  <Stat
+                    label="連続記録"
+                    value={`${advice.stats.consecutiveDaysLogged}日`}
+                  />
+                  <Stat
+                    label="平均カロリー"
+                    value={`${advice.stats.avgDailyCalories.toLocaleString()}kcal`}
+                  />
+                  <Stat
+                    label="平均タンパク質"
+                    value={`${advice.stats.avgDailyProtein}g`}
+                  />
+                  {advice.stats.daysLogged > 0 && advice.target && (
+                    <>
+                      <Stat
+                        label="カロリー達成率"
+                        value={`${advice.stats.caloriesAdherencePct}%`}
+                        color={getAdherenceColor(
+                          advice.stats.caloriesAdherencePct,
+                        )}
+                      />
+                      <Stat
+                        label="タンパク質達成率"
+                        value={`${advice.stats.proteinAdherencePct}%`}
+                        color={getAdherenceColor(
+                          advice.stats.proteinAdherencePct,
+                        )}
+                      />
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl border border-gray-200 p-5">
+                <div className="text-sm font-semibold text-gray-700 mb-3">
+                  🤖 AIからのアドバイス
+                </div>
+                <div className="prose prose-sm max-w-none text-gray-800 leading-relaxed">
+                  <MarkdownLite text={advice.advice} />
+                </div>
+              </div>
+            </>
+          )}
+
+          {adviceError && (
+            <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-sm">
+              {adviceError}
             </div>
-            <div className="prose prose-sm max-w-none text-gray-800 leading-relaxed">
-              <MarkdownLite text={data.advice} />
-            </div>
-          </div>
+          )}
+
+          <button
+            onClick={generateAdvice}
+            disabled={adviceLoading}
+            className="w-full h-12 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold rounded-xl"
+          >
+            {adviceLoading
+              ? '🤖 アドバイス生成中...'
+              : advice
+                ? '🔁 再生成'
+                : '✨ AIアドバイスを生成'}
+          </button>
+
+          {!advice && !adviceLoading && !adviceError && (
+            <p className="text-xs text-gray-500 leading-relaxed">
+              ボタンを押すと、過去14日のあなたの記録を参考にClaude AIが個別のアドバイスを生成します。
+            </p>
+          )}
         </>
       )}
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-sm">
-          {error}
-        </div>
-      )}
+      {tab === 'weekly' && (
+        <>
+          {weekly && (
+            <>
+              <div className="bg-white rounded-xl border border-gray-200 p-4">
+                <h2 className="text-sm font-semibold text-gray-700 mb-3">
+                  📅 直近7日のサマリー
+                </h2>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <Stat
+                    label="記録日数"
+                    value={`${weekly.stats.daysLogged}日`}
+                  />
+                  <Stat
+                    label="平均カロリー"
+                    value={`${weekly.stats.avgDailyCalories.toLocaleString()}kcal`}
+                  />
+                  {weekly.weightTrend && weekly.weightTrend.daysLogged >= 2 && (
+                    <>
+                      <Stat
+                        label="体重変化"
+                        value={`${
+                          weekly.weightTrend.deltaKg >= 0 ? '+' : ''
+                        }${weekly.weightTrend.deltaKg.toFixed(1)}kg`}
+                        color={
+                          weekly.weightTrend.deltaKg < 0
+                            ? 'text-emerald-600'
+                            : weekly.weightTrend.deltaKg > 0
+                              ? 'text-amber-600'
+                              : 'text-gray-700'
+                        }
+                      />
+                      <Stat
+                        label="週次変化(回帰)"
+                        value={`${
+                          weekly.weightTrend.weeklyDeltaKg >= 0 ? '+' : ''
+                        }${weekly.weightTrend.weeklyDeltaKg.toFixed(2)}kg/週`}
+                      />
+                    </>
+                  )}
+                </div>
+              </div>
 
-      <button
-        onClick={generate}
-        disabled={loading}
-        className="w-full h-12 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold rounded-xl"
-      >
-        {loading
-          ? '🤖 アドバイス生成中...'
-          : data
-            ? '🔁 再生成'
-            : '✨ AIアドバイスを生成'}
-      </button>
+              <div className="bg-white rounded-xl border border-gray-200 p-5">
+                <div className="text-sm font-semibold text-gray-700 mb-3">
+                  📊 週次レポート
+                </div>
+                <div className="prose prose-sm max-w-none text-gray-800 leading-relaxed">
+                  <MarkdownLite text={weekly.report} />
+                </div>
+              </div>
+            </>
+          )}
 
-      {!data && !loading && !error && (
-        <p className="text-xs text-gray-500 leading-relaxed">
-          ボタンを押すと、あなたのプロフィールと食事記録を参考にClaude AIが個別のアドバイスを生成します。記録が増えるほど精度が上がります。
-        </p>
+          {weeklyError && (
+            <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-sm">
+              {weeklyError}
+            </div>
+          )}
+
+          <button
+            onClick={generateWeekly}
+            disabled={weeklyLoading}
+            className="w-full h-12 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold rounded-xl"
+          >
+            {weeklyLoading
+              ? '🤖 レポート生成中...'
+              : weekly
+                ? '🔁 再生成'
+                : '📊 今週のレポートを生成'}
+          </button>
+
+          {!weekly && !weeklyLoading && !weeklyError && (
+            <p className="text-xs text-gray-500 leading-relaxed">
+              直近7日間の食事・体重・コンディションを総合的に振り返り、
+              よかった点・課題・来週のアクションをまとめたレポートを生成します。
+            </p>
+          )}
+        </>
       )}
     </div>
   );

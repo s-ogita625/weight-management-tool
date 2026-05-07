@@ -3,6 +3,9 @@
 import { useRouter } from 'next/navigation';
 import { useActionState, useEffect, useRef, useState } from 'react';
 import { addMealAction, type MealSuggestion } from '@/app/actions/meal';
+import AiMealEstimator, {
+  type AiEstimate,
+} from '@/components/forms/AiMealEstimator';
 import MealSuggestPicker from '@/components/forms/MealSuggestPicker';
 import { dateInJST, timeInJST } from '@/lib/date';
 import { MEAL_TYPE_ICONS, MEAL_TYPE_LABELS, type MealType } from '@/lib/types';
@@ -83,11 +86,24 @@ export default function MealLogForm() {
     setAppliedFromSuggestion(s.food_name);
   };
 
+  const handleAiEstimate = (e: AiEstimate) => {
+    setFoodName(e.food_name);
+    setCalories(fmtNum(e.calories));
+    setProtein(fmtNum(e.protein_g));
+    setFat(fmtNum(e.fat_g));
+    setCarbs(fmtNum(e.carbs_g));
+    if (e.meal_type) setMealType(e.meal_type);
+    setAppliedFromSuggestion(`AI推定: ${e.food_name}`);
+  };
+
   return (
     <form action={formAction} ref={formRef} className="space-y-4">
       <input type="hidden" name="meal_type" value={mealType} />
 
-      <MealSuggestPicker onPick={handlePickSuggestion} />
+      <div className="grid grid-cols-1 gap-2">
+        <AiMealEstimator onApply={handleAiEstimate} />
+        <MealSuggestPicker onPick={handlePickSuggestion} />
+      </div>
 
       {appliedFromSuggestion && (
         <div className="bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 text-xs text-blue-700 flex items-center justify-between">
