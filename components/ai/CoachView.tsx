@@ -160,7 +160,7 @@ export default function CoachView() {
                 <div className="text-sm font-semibold text-gray-700 mb-3">
                   🤖 AIからのアドバイス
                 </div>
-                <div className="prose prose-sm max-w-none text-gray-800 leading-relaxed">
+                <div className="text-sm text-gray-800 leading-relaxed break-words overflow-hidden">
                   <MarkdownLite text={advice.advice} />
                 </div>
               </div>
@@ -240,7 +240,7 @@ export default function CoachView() {
                 <div className="text-sm font-semibold text-gray-700 mb-3">
                   📊 週次レポート
                 </div>
-                <div className="prose prose-sm max-w-none text-gray-800 leading-relaxed">
+                <div className="text-sm text-gray-800 leading-relaxed break-words overflow-hidden">
                   <MarkdownLite text={weekly.report} />
                 </div>
               </div>

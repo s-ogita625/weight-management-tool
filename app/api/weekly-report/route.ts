@@ -49,12 +49,16 @@ export async function POST() {
       contents: userQuestion,
       config: {
         systemInstruction: systemPrompt,
-        maxOutputTokens: 2000,
+        maxOutputTokens: 8000,
         temperature: 0.7,
+        thinkingConfig: { thinkingBudget: 0 },
       },
     });
 
     const text = response.text ?? '';
+    if (!text) {
+      console.warn('[weekly-report] empty text. finishReason:', response.candidates?.[0]?.finishReason);
+    }
 
     return NextResponse.json({
       report: text,

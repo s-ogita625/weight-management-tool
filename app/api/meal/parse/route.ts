@@ -111,10 +111,11 @@ export async function POST(req: Request) {
       contents: text,
       config: {
         systemInstruction: SYSTEM_PROMPT,
-        maxOutputTokens: 800,
+        maxOutputTokens: 2000,
         temperature: 0.4,
         responseMimeType: 'application/json',
         responseSchema: RESPONSE_SCHEMA,
+        thinkingConfig: { thinkingBudget: 0 },
       },
     });
 

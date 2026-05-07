@@ -343,7 +343,7 @@ export default function TrendView({ logs, profile }: Props) {
             <div className="text-sm font-semibold text-gray-700 mb-2">
               🤖 AIの見解
             </div>
-            <div className="prose prose-sm max-w-none text-gray-800 leading-relaxed">
+            <div className="text-sm text-gray-800 leading-relaxed break-words overflow-hidden">
               <MarkdownLite text={aiAdvice} />
             </div>
           </div>

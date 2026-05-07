@@ -46,12 +46,16 @@ export async function POST() {
       contents: userQuestion,
       config: {
         systemInstruction: systemPrompt,
-        maxOutputTokens: 1500,
+        maxOutputTokens: 8000,
         temperature: 0.7,
+        thinkingConfig: { thinkingBudget: 0 }, // 軽量タスクは thinking 不要
       },
     });
 
     const text = response.text ?? '';
+    if (!text) {
+      console.warn('[advice] empty text. finishReason:', response.candidates?.[0]?.finishReason);
+    }
 
     return NextResponse.json({
       advice: text,
