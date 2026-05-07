@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSessionUserId } from '@/lib/auth';
-import { getAnthropicClient, HAIKU_MODEL } from '@/lib/ai/anthropic';
+import { getGeminiClient, GEMINI_FLASH } from '@/lib/ai/gemini';
 import { buildSystemPrompt, buildUserContext } from '@/lib/ai/context';
 
 export const runtime = 'nodejs';
@@ -13,14 +13,13 @@ export async function POST() {
       return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
     }
 
-    if (!process.env.ANTHROPIC_API_KEY) {
+    if (!process.env.GEMINI_API_KEY) {
       return NextResponse.json(
-        { error: 'AI機能が利用できません（ANTHROPIC_API_KEY 未設定）' },
+        { error: 'AI機能が利用できません（GEMINI_API_KEY 未設定）' },
         { status: 503 },
       );
     }
 
-    // 7日分のコンテキストを構築
     const ctx = await buildUserContext(userId, 7);
     const systemPrompt = buildSystemPrompt(ctx);
 
@@ -44,18 +43,18 @@ export async function POST() {
 
 データが少ない場合（記録日数3日未満等）は、その旨を率直に伝え、まず記録習慣をつけるためのアドバイスを中心にしてください。`;
 
-    const client = getAnthropicClient();
-    const response = await client.messages.create({
-      model: HAIKU_MODEL,
-      max_tokens: 1500,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userQuestion }],
+    const client = getGeminiClient();
+    const response = await client.models.generateContent({
+      model: GEMINI_FLASH,
+      contents: userQuestion,
+      config: {
+        systemInstruction: systemPrompt,
+        maxOutputTokens: 2000,
+        temperature: 0.7,
+      },
     });
 
-    const text = response.content
-      .filter((c) => c.type === 'text')
-      .map((c) => (c as { type: 'text'; text: string }).text)
-      .join('');
+    const text = response.text ?? '';
 
     return NextResponse.json({
       report: text,

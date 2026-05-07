@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
+import { Type } from '@google/genai';
 import { getSessionUserId } from '@/lib/auth';
-import { getAnthropicClient, HAIKU_MODEL } from '@/lib/ai/anthropic';
+import { getGeminiClient, GEMINI_FLASH } from '@/lib/ai/gemini';
 import type { MealType } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -18,29 +19,15 @@ interface ParsedMeal {
 }
 
 const SYSTEM_PROMPT = `あなたは経験豊富な管理栄養士のアシスタントです。
-ユーザーが日本語で自然に書いた食事内容を、JSON形式で構造化された栄養情報に変換します。
+ユーザーが日本語で自然に書いた食事内容を、構造化された栄養情報に変換します。
 
 【ルール】
-- 必ず JSON 形式で出力する。前後の説明・コードブロック記号は不要、純粋なJSONのみ
 - 量が明示されていない場合は、日本人の標準的な1人前で推定する（例: ご飯=150g, 鶏むね100g, etc.）
 - カロリー・PFCは整数か小数1桁まで
-- 食事区分(meal_type)は内容から類推して以下のいずれか: breakfast/lunch/dinner/snack/pre_workout/post_workout
-  判断できなければ null
+- 食事区分(meal_type)は内容から類推。判断できなければ "unknown" を返す
 - food_name は簡潔にまとめる（30文字以内）
 - 推定の信頼度を confidence で示す: high(明確) / medium(量が曖昧) / low(食材不明など)
 - notes には推定の根拠や注意点を簡潔に（80文字以内）
-
-【出力JSON形式】
-{
-  "food_name": "string",
-  "calories": number,
-  "protein_g": number,
-  "fat_g": number,
-  "carbs_g": number,
-  "meal_type": "breakfast|lunch|dinner|snack|pre_workout|post_workout|null",
-  "confidence": "high|medium|low",
-  "notes": "string"
-}
 
 【参考栄養価（100gあたり）】
 - 白米(炊飯済): 168kcal, P2.5/F0.3/C37
@@ -51,6 +38,44 @@ const SYSTEM_PROMPT = `あなたは経験豊富な管理栄養士のアシスタ
 - バナナ(1本100g): 86kcal, P1.1/F0.2/C22.5
 - プロテイン1スクープ(30g): 約120kcal, P24/F2/C2`;
 
+const RESPONSE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    food_name: { type: Type.STRING },
+    calories: { type: Type.NUMBER },
+    protein_g: { type: Type.NUMBER },
+    fat_g: { type: Type.NUMBER },
+    carbs_g: { type: Type.NUMBER },
+    meal_type: {
+      type: Type.STRING,
+      enum: [
+        'breakfast',
+        'lunch',
+        'dinner',
+        'snack',
+        'pre_workout',
+        'post_workout',
+        'unknown',
+      ],
+    },
+    confidence: {
+      type: Type.STRING,
+      enum: ['high', 'medium', 'low'],
+    },
+    notes: { type: Type.STRING },
+  },
+  required: [
+    'food_name',
+    'calories',
+    'protein_g',
+    'fat_g',
+    'carbs_g',
+    'meal_type',
+    'confidence',
+    'notes',
+  ],
+};
+
 export async function POST(req: Request) {
   try {
     const userId = await getSessionUserId();
@@ -58,9 +83,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
     }
 
-    if (!process.env.ANTHROPIC_API_KEY) {
+    if (!process.env.GEMINI_API_KEY) {
       return NextResponse.json(
-        { error: 'AI機能が利用できません（ANTHROPIC_API_KEY 未設定）' },
+        { error: 'AI機能が利用できません（GEMINI_API_KEY 未設定）' },
         { status: 503 },
       );
     }
@@ -80,21 +105,21 @@ export async function POST(req: Request) {
       );
     }
 
-    const client = getAnthropicClient();
-    const response = await client.messages.create({
-      model: HAIKU_MODEL,
-      max_tokens: 600,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: text }],
+    const client = getGeminiClient();
+    const response = await client.models.generateContent({
+      model: GEMINI_FLASH,
+      contents: text,
+      config: {
+        systemInstruction: SYSTEM_PROMPT,
+        maxOutputTokens: 800,
+        temperature: 0.4,
+        responseMimeType: 'application/json',
+        responseSchema: RESPONSE_SCHEMA,
+      },
     });
 
-    const raw = response.content
-      .filter((c) => c.type === 'text')
-      .map((c) => (c as { type: 'text'; text: string }).text)
-      .join('')
-      .trim();
-
-    const parsed = parseJSON(raw);
+    const raw = response.text ?? '';
+    const parsed = parseAndValidate(raw);
     if (!parsed) {
       return NextResponse.json(
         { error: 'AIの応答を解析できませんでした', raw },
@@ -113,14 +138,12 @@ export async function POST(req: Request) {
   }
 }
 
-function parseJSON(raw: string): ParsedMeal | null {
-  // ```json ... ``` で囲まれていた場合も対応
+function parseAndValidate(raw: string): ParsedMeal | null {
   let s = raw.trim();
   s = s
     .replace(/^```(?:json)?\s*/i, '')
     .replace(/```$/i, '')
     .trim();
-  // 最初の { から最後の } までを抽出
   const start = s.indexOf('{');
   const end = s.lastIndexOf('}');
   if (start === -1 || end === -1) return null;

@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getSessionUserId } from '@/lib/auth';
 import { sql } from '@/lib/db';
-import { getAnthropicClient, HAIKU_MODEL } from '@/lib/ai/anthropic';
+import { getGeminiClient, GEMINI_FLASH } from '@/lib/ai/gemini';
 import { buildSystemPrompt, buildUserContext } from '@/lib/ai/context';
 import type { AiChatMessage } from '@/lib/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const MAX_HISTORY = 20; // チャットに渡す過去メッセージ数
+const MAX_HISTORY = 20;
 
 export async function POST(req: Request) {
   try {
@@ -32,9 +32,9 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!process.env.ANTHROPIC_API_KEY) {
+    if (!process.env.GEMINI_API_KEY) {
       return NextResponse.json(
-        { error: 'AI機能が利用できません（ANTHROPIC_API_KEY 未設定）' },
+        { error: 'AI機能が利用できません（GEMINI_API_KEY 未設定）' },
         { status: 503 },
       );
     }
@@ -45,7 +45,7 @@ export async function POST(req: Request) {
       values (${userId}, 'user', ${message})
     `;
 
-    // 過去メッセージを取得（古い順）
+    // 過去メッセージ取得（古い順）
     const historyDesc = (await sql`
       select id, user_id, role, content, created_at
       from ai_chat_messages
@@ -55,23 +55,25 @@ export async function POST(req: Request) {
     `) as AiChatMessage[];
     const history = historyDesc.reverse();
 
-    // ユーザーコンテキストを構築
     const ctx = await buildUserContext(userId, 14);
     const systemPrompt = buildSystemPrompt(ctx);
 
-    const client = getAnthropicClient();
-    const messages = history.map((m) => ({
-      role: m.role,
-      content: m.content,
+    const client = getGeminiClient();
+
+    // Gemini の contents 形式: [{role: 'user'|'model', parts: [{text: ...}]}, ...]
+    const contents = history.map((m) => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }],
     }));
 
-    // ストリーミングレスポンスを返す
-    const stream = await client.messages.create({
-      model: HAIKU_MODEL,
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages,
-      stream: true,
+    const streamRes = await client.models.generateContentStream({
+      model: GEMINI_FLASH,
+      contents,
+      config: {
+        systemInstruction: systemPrompt,
+        maxOutputTokens: 1500,
+        temperature: 0.7,
+      },
     });
 
     const encoder = new TextEncoder();
@@ -79,17 +81,13 @@ export async function POST(req: Request) {
       async start(controller) {
         let assistantText = '';
         try {
-          for await (const event of stream) {
-            if (
-              event.type === 'content_block_delta' &&
-              event.delta.type === 'text_delta'
-            ) {
-              const chunk = event.delta.text;
-              assistantText += chunk;
-              controller.enqueue(encoder.encode(chunk));
+          for await (const chunk of streamRes) {
+            const t = chunk.text ?? '';
+            if (t) {
+              assistantText += t;
+              controller.enqueue(encoder.encode(t));
             }
           }
-          // 完了したらアシスタント応答を保存
           if (assistantText) {
             await sql`
               insert into ai_chat_messages (user_id, role, content)
@@ -121,7 +119,6 @@ export async function POST(req: Request) {
   }
 }
 
-// チャット履歴のクリア
 export async function DELETE() {
   const userId = await getSessionUserId();
   if (!userId) {

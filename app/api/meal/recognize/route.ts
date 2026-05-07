@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
+import { Type } from '@google/genai';
 import { getSessionUserId } from '@/lib/auth';
-import { getAnthropicClient, HAIKU_MODEL } from '@/lib/ai/anthropic';
+import { getGeminiClient, GEMINI_FLASH } from '@/lib/ai/gemini';
 import type { MealType } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -19,31 +20,60 @@ interface RecognizedMeal {
 }
 
 const SYSTEM_PROMPT = `あなたは経験豊富な管理栄養士のアシスタントです。
-食事の写真から、写っている料理・食材を識別し、栄養情報を推定してJSON形式で返します。
+食事の写真から、写っている料理・食材を識別し、栄養情報を推定します。
 
 【ルール】
-- 必ず JSON 形式のみで出力。前後の説明・コードブロック記号は不要
 - 写真にある食材を items 配列に列挙（例: ["白米", "鶏もも肉の照り焼き", "サラダ"]）
 - 量は写真の見た目から日本人の標準的な1人前を仮定して推定
 - カロリー・PFCは整数か小数1桁
-- 食事区分(meal_type)は写っている内容から類推
+- 食事区分(meal_type)は写っている内容から類推。判断できなければ "unknown"
 - food_name は写真全体の一言まとめ（30文字以内）
-- 信頼度: high(明確に判別できる) / medium(一部曖昧) / low(暗い・ピンぼけ・判別困難)
+- 信頼度: high(明確に判別) / medium(一部曖昧) / low(暗い・ピンぼけ・判別困難)
 - notes には推定の根拠や量の仮定を簡潔に（150文字以内）
-- 食事以外の写真の場合は confidence=low、food_name="食事を判別できません"、栄養値0で返す
+- 食事以外の写真の場合は confidence=low、food_name="食事を判別できません"、栄養値0で返す`;
 
-【出力JSON形式】
-{
-  "food_name": "string",
-  "items": ["string"],
-  "calories": number,
-  "protein_g": number,
-  "fat_g": number,
-  "carbs_g": number,
-  "meal_type": "breakfast|lunch|dinner|snack|pre_workout|post_workout|null",
-  "confidence": "high|medium|low",
-  "notes": "string"
-}`;
+const RESPONSE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    food_name: { type: Type.STRING },
+    items: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+    },
+    calories: { type: Type.NUMBER },
+    protein_g: { type: Type.NUMBER },
+    fat_g: { type: Type.NUMBER },
+    carbs_g: { type: Type.NUMBER },
+    meal_type: {
+      type: Type.STRING,
+      enum: [
+        'breakfast',
+        'lunch',
+        'dinner',
+        'snack',
+        'pre_workout',
+        'post_workout',
+        'unknown',
+      ],
+    },
+    confidence: {
+      type: Type.STRING,
+      enum: ['high', 'medium', 'low'],
+    },
+    notes: { type: Type.STRING },
+  },
+  required: [
+    'food_name',
+    'items',
+    'calories',
+    'protein_g',
+    'fat_g',
+    'carbs_g',
+    'meal_type',
+    'confidence',
+    'notes',
+  ],
+};
 
 const ALLOWED_MEDIA = new Set([
   'image/jpeg',
@@ -59,9 +89,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
     }
 
-    if (!process.env.ANTHROPIC_API_KEY) {
+    if (!process.env.GEMINI_API_KEY) {
       return NextResponse.json(
-        { error: 'AI機能が利用できません（ANTHROPIC_API_KEY 未設定）' },
+        { error: 'AI機能が利用できません（GEMINI_API_KEY 未設定）' },
         { status: 503 },
       );
     }
@@ -91,43 +121,36 @@ export async function POST(req: Request) {
     const arrayBuffer = await file.arrayBuffer();
     const base64 = Buffer.from(arrayBuffer).toString('base64');
 
-    const client = getAnthropicClient();
-    const response = await client.messages.create({
-      model: HAIKU_MODEL,
-      max_tokens: 800,
-      system: SYSTEM_PROMPT,
-      messages: [
+    const client = getGeminiClient();
+    const response = await client.models.generateContent({
+      model: GEMINI_FLASH,
+      contents: [
         {
           role: 'user',
-          content: [
+          parts: [
             {
-              type: 'image',
-              source: {
-                type: 'base64',
-                media_type: file.type as
-                  | 'image/jpeg'
-                  | 'image/png'
-                  | 'image/webp'
-                  | 'image/gif',
+              inlineData: {
+                mimeType: file.type,
                 data: base64,
               },
             },
             {
-              type: 'text',
-              text: 'この食事の写真を分析して、上記JSON形式で出力してください。',
+              text: 'この食事の写真を分析して、JSON形式で出力してください。',
             },
           ],
         },
       ],
+      config: {
+        systemInstruction: SYSTEM_PROMPT,
+        maxOutputTokens: 1000,
+        temperature: 0.4,
+        responseMimeType: 'application/json',
+        responseSchema: RESPONSE_SCHEMA,
+      },
     });
 
-    const raw = response.content
-      .filter((c) => c.type === 'text')
-      .map((c) => (c as { type: 'text'; text: string }).text)
-      .join('')
-      .trim();
-
-    const parsed = parseJSON(raw);
+    const raw = response.text ?? '';
+    const parsed = parseAndValidate(raw);
     if (!parsed) {
       return NextResponse.json(
         { error: 'AIの応答を解析できませんでした', raw },
@@ -146,7 +169,7 @@ export async function POST(req: Request) {
   }
 }
 
-function parseJSON(raw: string): RecognizedMeal | null {
+function parseAndValidate(raw: string): RecognizedMeal | null {
   let s = raw.trim();
   s = s
     .replace(/^```(?:json)?\s*/i, '')
