@@ -30,7 +30,8 @@ export async function addTransactionAction(_prev: unknown, formData: FormData) {
     values (${userId}, ${date}, ${kind}, ${category}, ${amount}, ${memo})
   `;
 
-  revalidatePath('/budget', 'layout');
+  revalidatePath('/budget');
+  revalidatePath('/');
   return { ok: true as const };
 }
 
@@ -41,5 +42,6 @@ export async function deleteTransactionAction(id: string) {
   await sql`
     delete from transactions where id = ${id} and user_id = ${userId}
   `;
-  revalidatePath('/budget', 'layout');
+  revalidatePath('/budget');
+  revalidatePath('/');
 }

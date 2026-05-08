@@ -87,10 +87,35 @@ export async function buildUserContext(
   userId: string,
   daysBack = 14,
 ): Promise<UserContext> {
-  const profileRows = (await sql`
-    select * from profiles where user_id = ${userId} limit 1
-  `) as Profile[];
+  // 3 つの SQL を並列実行
+  const [profileRowsRaw, mealLogsRaw, dailyLogsRaw] = await Promise.all([
+    sql`select * from profiles where user_id = ${userId} limit 1`,
+    sql`
+      select id, user_id, to_char(date, 'YYYY-MM-DD') as date,
+             to_char(time, 'HH24:MI') as time,
+             meal_type, food_name,
+             calories, protein_g, fat_g, carbs_g, memo, created_at
+      from meal_logs
+      where user_id = ${userId}
+        and date >= current_date - (${daysBack}::int) * interval '1 day'
+      order by date desc, time desc nulls last, created_at desc
+    `,
+    sql`
+      select id, user_id, to_char(date, 'YYYY-MM-DD') as date,
+             weight_kg, body_fat_pct,
+             sleep_hours, sleep_quality, fatigue, mood, bowel,
+             memo, custom_fields, created_at, updated_at
+      from daily_logs
+      where user_id = ${userId}
+        and date >= current_date - (${daysBack}::int) * interval '1 day'
+      order by date asc
+    `,
+  ]);
+
+  const profileRows = profileRowsRaw as unknown as Profile[];
   const profile = profileRows[0] ?? null;
+  const logs = mealLogsRaw as unknown as MealLog[];
+  const dailyLogs = dailyLogsRaw as unknown as DailyLog[];
 
   let target: UserContext['target'] = null;
   if (profile) {
@@ -117,17 +142,6 @@ export async function buildUserContext(
     };
   }
 
-  const logs = (await sql`
-    select id, user_id, to_char(date, 'YYYY-MM-DD') as date,
-           to_char(time, 'HH24:MI') as time,
-           meal_type, food_name,
-           calories, protein_g, fat_g, carbs_g, memo, created_at
-    from meal_logs
-    where user_id = ${userId}
-      and date >= current_date - (${daysBack}::int) * interval '1 day'
-    order by date desc, time desc nulls last, created_at desc
-  `) as MealLog[];
-
   // 日別集計
   const byDate = new Map<string, DailyTotal>();
   for (const l of logs) {
@@ -149,18 +163,6 @@ export async function buildUserContext(
   const dailyTotals = Array.from(byDate.values()).sort(
     (a, b) => (a.date < b.date ? 1 : -1),
   );
-
-  // 朝の記録 (daily_logs) を取得（過去30日）
-  const dailyLogs = (await sql`
-    select id, user_id, to_char(date, 'YYYY-MM-DD') as date,
-           weight_kg, body_fat_pct,
-           sleep_hours, sleep_quality, fatigue, mood, bowel,
-           memo, custom_fields, created_at, updated_at
-    from daily_logs
-    where user_id = ${userId}
-      and date >= current_date - (${daysBack}::int) * interval '1 day'
-    order by date asc
-  `) as unknown as DailyLog[];
 
   // 体重トレンド分析
   const weightTrend = computeWeightTrend(dailyLogs);

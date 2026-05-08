@@ -60,9 +60,10 @@ export async function addMealAction(_prev: unknown, formData: FormData) {
     )
   `;
 
-  // レイアウトごと再検証してサーバーコンポーネントを再実行
-  revalidatePath('/log', 'layout');
-  revalidatePath('/history', 'layout');
+  // ページ単位で再検証（layout 全体ではなく該当ページのみ → 高速）
+  revalidatePath('/log');
+  revalidatePath('/history');
+  revalidatePath('/');
   return { ok: true as const };
 }
 
@@ -74,8 +75,9 @@ export async function deleteMealAction(id: string) {
     delete from meal_logs where id = ${id} and user_id = ${userId}
   `;
 
-  revalidatePath('/history', 'layout');
-  revalidatePath('/log', 'layout');
+  revalidatePath('/history');
+  revalidatePath('/log');
+  revalidatePath('/');
 }
 
 export interface MealSuggestion {

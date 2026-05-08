@@ -48,30 +48,43 @@ export default async function Home() {
     );
   }
 
-  // プロフィール未登録なら強制 onboarding
-  const profileRows = (await sql`
-    select * from profiles where user_id = ${userId} limit 1
-  `) as unknown as Profile[];
+  const today = dateInJST();
+  const ym = today.slice(0, 7);
+  const start = `${ym}-01`;
+
+  // 5 つのデータ取得をすべて並列実行（neon HTTP は 1 SQL = 1 リクエストなので並列化が効く）
+  const [profileRowsRaw, morningRowsRaw, mealRowsRaw, txTotalsRowsRaw, recurringTotal] =
+    await Promise.all([
+      sql`select * from profiles where user_id = ${userId} limit 1`,
+      sql`
+        select id, user_id, to_char(date, 'YYYY-MM-DD') as date,
+               weight_kg, body_fat_pct, sleep_hours, sleep_quality, fatigue, mood, bowel
+        from daily_logs
+        where user_id = ${userId} and date = ${today}
+        limit 1
+      `,
+      sql`
+        select calories, protein_g, fat_g, carbs_g
+        from meal_logs
+        where user_id = ${userId} and date = ${today}
+      `,
+      sql`
+        select kind, coalesce(sum(amount),0)::float as total
+        from transactions
+        where user_id = ${userId} and date >= ${start}
+        group by kind
+      `,
+      getRecurringMonthlyTotal(userId, ym),
+    ]);
+
+  const profileRows = profileRowsRaw as unknown as Profile[];
   if (profileRows.length === 0) redirect('/onboarding');
   const profile = profileRows[0];
 
-  // 今日の朝記録
-  const today = dateInJST();
-  const morningRows = (await sql`
-    select id, user_id, to_char(date, 'YYYY-MM-DD') as date,
-           weight_kg, body_fat_pct, sleep_hours, sleep_quality, fatigue, mood, bowel
-    from daily_logs
-    where user_id = ${userId} and date = ${today}
-    limit 1
-  `) as unknown as DailyLog[];
+  const morningRows = morningRowsRaw as unknown as DailyLog[];
   const morning = morningRows[0] ?? null;
 
-  // 今日の食事合計
-  const mealRows = (await sql`
-    select calories, protein_g, fat_g, carbs_g
-    from meal_logs
-    where user_id = ${userId} and date = ${today}
-  `) as unknown as MealLog[];
+  const mealRows = mealRowsRaw as unknown as MealLog[];
   const mealTotal = mealRows.reduce(
     (a, r) => ({
       calories: a.calories + Number(r.calories),
@@ -82,19 +95,12 @@ export default async function Home() {
     { calories: 0, protein_g: 0, fat_g: 0, carbs_g: 0 },
   );
 
-  // 今月の家計
-  const ym = today.slice(0, 7);
-  const start = `${ym}-01`;
-  const txTotalsRows = (await sql`
-    select kind, coalesce(sum(amount),0)::float as total
-    from transactions
-    where user_id = ${userId} and date >= ${start}
-    group by kind
-  `) as unknown as Array<{ kind: 'income' | 'expense'; total: number }>;
+  const txTotalsRows = txTotalsRowsRaw as unknown as Array<{
+    kind: 'income' | 'expense';
+    total: number;
+  }>;
   const income = txTotalsRows.find((r) => r.kind === 'income')?.total ?? 0;
   const expenseTx = txTotalsRows.find((r) => r.kind === 'expense')?.total ?? 0;
-  // 固定費を加算
-  const recurringTotal = await getRecurringMonthlyTotal(userId, ym);
   const expense = expenseTx + recurringTotal;
 
   return (

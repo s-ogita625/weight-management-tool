@@ -128,9 +128,10 @@ export async function saveDailyLogAction(_prev: unknown, formData: FormData) {
     `;
   }
 
-  revalidatePath('/morning', 'layout');
-  revalidatePath('/trend', 'layout');
-  revalidatePath('/plan', 'layout');
+  revalidatePath('/morning');
+  revalidatePath('/trend');
+  revalidatePath('/plan');
+  revalidatePath('/');
   return { ok: true as const };
 }
 
@@ -141,6 +142,7 @@ export async function deleteDailyLogAction(date: string) {
   await sql`
     delete from daily_logs where user_id = ${userId} and date = ${date}
   `;
-  revalidatePath('/morning', 'layout');
-  revalidatePath('/trend', 'layout');
+  revalidatePath('/morning');
+  revalidatePath('/trend');
+  revalidatePath('/');
 }

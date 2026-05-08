@@ -71,8 +71,9 @@ export async function addRecurringAction(
     )
   `;
 
-  revalidatePath('/budget', 'layout');
-  revalidatePath('/budget/recurring', 'layout');
+  revalidatePath('/budget');
+  revalidatePath('/budget/recurring');
+  revalidatePath('/');
   return { ok: true as const };
 }
 
@@ -103,8 +104,9 @@ export async function updateRecurringAction(
     where id = ${id} and user_id = ${userId}
   `;
 
-  revalidatePath('/budget', 'layout');
-  revalidatePath('/budget/recurring', 'layout');
+  revalidatePath('/budget');
+  revalidatePath('/budget/recurring');
+  revalidatePath('/');
   return { ok: true as const };
 }
 
@@ -115,8 +117,9 @@ export async function deleteRecurringAction(id: string) {
   await sql`
     delete from recurring_expenses where id = ${id} and user_id = ${userId}
   `;
-  revalidatePath('/budget', 'layout');
-  revalidatePath('/budget/recurring', 'layout');
+  revalidatePath('/budget');
+  revalidatePath('/budget/recurring');
+  revalidatePath('/');
 }
 
 export async function toggleRecurringActiveAction(
@@ -130,6 +133,7 @@ export async function toggleRecurringActiveAction(
     update recurring_expenses set is_active = ${isActive}
     where id = ${id} and user_id = ${userId}
   `;
-  revalidatePath('/budget', 'layout');
-  revalidatePath('/budget/recurring', 'layout');
+  revalidatePath('/budget');
+  revalidatePath('/budget/recurring');
+  revalidatePath('/');
 }

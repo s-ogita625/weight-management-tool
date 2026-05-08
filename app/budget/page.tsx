@@ -51,19 +51,25 @@ export default async function BudgetPage({ searchParams }: Props) {
   const ym = sp?.ym ?? currentYearMonth();
   const { start, end } = ymToRange(ym);
 
-  // 当月のトランザクション
-  const txRowsRaw = await sql`
-    select id, user_id, to_char(date, 'YYYY-MM-DD') as date,
-           kind, category, amount, memo, created_at
-    from transactions
-    where user_id = ${userId}
-      and date >= ${start} and date < ${end}
-    order by date desc, created_at desc
-  `;
+  // 当月のトランザクション、固定費、食事記録件数を並列取得
+  const [txRowsRaw, recurring, mealCountRowsRaw] = await Promise.all([
+    sql`
+      select id, user_id, to_char(date, 'YYYY-MM-DD') as date,
+             kind, category, amount, memo, created_at
+      from transactions
+      where user_id = ${userId}
+        and date >= ${start} and date < ${end}
+      order by date desc, created_at desc
+    `,
+    getRecurringForMonth(userId, ym),
+    sql`
+      select count(*)::int as cnt
+      from meal_logs
+      where user_id = ${userId}
+        and date >= ${start} and date < ${end}
+    `,
+  ]);
   const txItems = txRowsRaw as unknown as Transaction[];
-
-  // 当月に有効な固定費
-  const recurring = await getRecurringForMonth(userId, ym);
   const recurringTotal = recurring.reduce((a, r) => a + Number(r.amount), 0);
 
   // トランザクション集計
@@ -120,13 +126,8 @@ export default async function BudgetPage({ searchParams }: Props) {
     : daysInMonth;
   const dailyFoodAvg = elapsedDays > 0 ? Math.round(foodSpend / elapsedDays) : 0;
 
-  // 食事記録件数
-  const mealCountRows = (await sql`
-    select count(*)::int as cnt
-    from meal_logs
-    where user_id = ${userId}
-      and date >= ${start} and date < ${end}
-  `) as unknown as Array<{ cnt: number }>;
+  // 食事記録件数（並列取得済み）
+  const mealCountRows = mealCountRowsRaw as unknown as Array<{ cnt: number }>;
   const mealCount = mealCountRows[0]?.cnt ?? 0;
 
   const prevYM = shiftMonth(ym, -1);
