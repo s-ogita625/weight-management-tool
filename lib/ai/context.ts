@@ -138,6 +138,8 @@ export async function buildUserContext(
       targetWeightKg: Number(profile.target_weight_kg),
       targetBodyFatPct: Number(profile.target_body_fat_pct),
       period: profile.target_period,
+      leanCutMode: profile.lean_cut_mode,
+      priority: profile.priority,
     });
     const rec =
       r.recommendedFormula === 'katchMcArdle' ? r.katchMcArdle : r.mifflin;

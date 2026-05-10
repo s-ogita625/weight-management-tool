@@ -67,6 +67,9 @@ export default async function LogPage() {
       targetWeightKg: Number(p.target_weight_kg),
       targetBodyFatPct: Number(p.target_body_fat_pct),
       period: p.target_period,
+      // リーンカット & 優先度をプロフィール設定から反映
+      leanCutMode: p.lean_cut_mode,
+      priority: p.priority,
     });
     const recommended =
       result.recommendedFormula === 'katchMcArdle'
