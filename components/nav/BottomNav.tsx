@@ -19,6 +19,7 @@ const moreItems = [
   { href: '/budget/recurring', label: '固定費の管理', icon: '📌' },
   { href: '/coach', label: 'AIコーチング', icon: '💡' },
   { href: '/chat', label: 'AIチャット', icon: '💬' },
+  { href: '/research', label: '文献リサーチ', icon: '📚' },
   { href: '/onboarding', label: 'プロフィール編集', icon: '⚙️' },
 ];
 

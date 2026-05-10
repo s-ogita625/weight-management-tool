@@ -25,11 +25,33 @@ interface Props {
 
 type Range = '14d' | '30d' | '90d' | 'all';
 
+interface DeepAnalysisResponse {
+  analysis: {
+    windowDays: number;
+    consistencyScore: number;
+    weightSlopeKgPerWeek: number;
+    weightSlopeAccelKgPerWeek2: number;
+    weightVolatilityKg: number;
+    sleepWeightCorrelation: number | null;
+    fatigueAdherenceCorrelation: number | null;
+    isPlateau: boolean;
+    plateauReason: string | null;
+  };
+  narrative: string;
+  note?: string;
+}
+
 export default function TrendView({ logs, profile }: Props) {
   const [range, setRange] = useState<Range>('30d');
   const [aiAdvice, setAiAdvice] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+
+  const [deepAnalysis, setDeepAnalysis] = useState<DeepAnalysisResponse | null>(
+    null,
+  );
+  const [deepLoading, setDeepLoading] = useState(false);
+  const [deepError, setDeepError] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     if (logs.length === 0) return [];
@@ -132,6 +154,25 @@ export default function TrendView({ logs, profile }: Props) {
       setAiError(e instanceof Error ? e.message : String(e));
     } finally {
       setAiLoading(false);
+    }
+  };
+
+  const fetchDeepAnalysis = async () => {
+    setDeepLoading(true);
+    setDeepError(null);
+    setDeepAnalysis(null);
+    try {
+      const res = await fetch('/api/deep-analysis', { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok) {
+        setDeepError(json.error ?? 'エラーが発生しました');
+      } else {
+        setDeepAnalysis(json);
+      }
+    } catch (e: unknown) {
+      setDeepError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDeepLoading(false);
     }
   };
 
@@ -318,6 +359,88 @@ export default function TrendView({ logs, profile }: Props) {
             }
           />
         </div>
+      </div>
+
+      {/* 詳細分析（停滞期判定 + 深掘り分析） */}
+      <div className="space-y-3">
+        {deepAnalysis && (
+          <div
+            className={`rounded-xl border p-4 ${
+              deepAnalysis.analysis.isPlateau
+                ? 'bg-amber-50 border-amber-200'
+                : 'bg-emerald-50 border-emerald-200'
+            }`}
+          >
+            <div className="text-sm font-semibold mb-2">
+              {deepAnalysis.analysis.isPlateau
+                ? '🚧 停滞期の可能性あり'
+                : '🟢 順調な進捗'}
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <Card
+                label="記録継続率"
+                value={`${deepAnalysis.analysis.consistencyScore}%`}
+              />
+              <Card
+                label="体重スロープ"
+                value={`${
+                  deepAnalysis.analysis.weightSlopeKgPerWeek >= 0 ? '+' : ''
+                }${deepAnalysis.analysis.weightSlopeKgPerWeek.toFixed(2)}kg/週`}
+              />
+              <Card
+                label="加速度"
+                value={`${
+                  deepAnalysis.analysis.weightSlopeAccelKgPerWeek2 >= 0
+                    ? '+'
+                    : ''
+                }${deepAnalysis.analysis.weightSlopeAccelKgPerWeek2.toFixed(2)}kg/週²`}
+              />
+              <Card
+                label="体重変動 (σ)"
+                value={`${deepAnalysis.analysis.weightVolatilityKg.toFixed(2)}kg`}
+              />
+            </div>
+            {deepAnalysis.analysis.plateauReason && (
+              <div className="text-xs text-amber-800 mt-2">
+                {deepAnalysis.analysis.plateauReason}
+              </div>
+            )}
+            {profile?.gender === 'female' && (
+              <div className="text-[10px] text-gray-500 mt-2">
+                ※ 女性は月経周期で 1-3kg の自然な体重変動があります（黄体期に増加傾向）
+              </div>
+            )}
+          </div>
+        )}
+
+        {deepAnalysis?.narrative && (
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="text-sm font-semibold text-gray-700 mb-3">
+              🤖 停滞期の判定と脱出戦略
+            </div>
+            <div className="text-sm text-gray-800 leading-relaxed break-words overflow-hidden">
+              <MarkdownLite text={deepAnalysis.narrative} />
+            </div>
+          </div>
+        )}
+
+        {deepError && (
+          <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-sm">
+            {deepError}
+          </div>
+        )}
+
+        <button
+          onClick={fetchDeepAnalysis}
+          disabled={deepLoading}
+          className="w-full h-11 bg-amber-600 hover:bg-amber-700 disabled:bg-gray-400 text-white font-semibold rounded-xl text-sm"
+        >
+          {deepLoading
+            ? '🔍 深掘り中...'
+            : deepAnalysis
+              ? '🔁 詳細分析を再実行'
+              : '🔍 詳細分析（停滞期判定）を実行'}
+        </button>
       </div>
 
       {/* AI 見解 */}

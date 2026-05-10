@@ -9,6 +9,7 @@ import { calculate } from '@/lib/calculations';
 import {
   GENDER_LABELS,
   PERIOD_LABELS,
+  PRIORITY_LABELS,
   TRAINING_FREQ_LABELS,
   type Period,
   type Profile,
@@ -20,20 +21,39 @@ interface Props {
 
 export default function PlanView({ profile }: Props) {
   const [period, setPeriod] = useState<Period>(profile.target_period);
+  // プロフィール設定を初期値にしつつ、UI 側で一時切替可能
+  const [leanCutMode, setLeanCutMode] = useState<boolean>(
+    profile.lean_cut_mode ?? false,
+  );
+
+  const baseInput = {
+    heightCm: profile.height_cm,
+    weightKg: profile.current_weight_kg,
+    bodyFatPct: profile.body_fat_pct,
+    age: profile.age,
+    gender: profile.gender,
+    trainingFreq: profile.training_freq,
+    targetWeightKg: profile.target_weight_kg,
+    targetBodyFatPct: profile.target_body_fat_pct,
+    priority: profile.priority,
+  };
 
   const result = useMemo(
     () =>
       calculate({
-        heightCm: profile.height_cm,
-        weightKg: profile.current_weight_kg,
-        bodyFatPct: profile.body_fat_pct,
-        age: profile.age,
-        gender: profile.gender,
-        trainingFreq: profile.training_freq,
-        targetWeightKg: profile.target_weight_kg,
-        targetBodyFatPct: profile.target_body_fat_pct,
+        ...baseInput,
         period,
+        leanCutMode,
       }),
+    // baseInput はプロフィール内の値で構成、profile が変わらない限り変化しない
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [profile, period, leanCutMode],
+  );
+
+  // 比較用：常に通常モードの結果も計算
+  const normalResult = useMemo(
+    () => calculate({ ...baseInput, period, leanCutMode: false }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [profile, period],
   );
 
@@ -41,6 +61,10 @@ export default function PlanView({ profile }: Props) {
     result.recommendedFormula === 'katchMcArdle'
       ? result.katchMcArdle
       : result.mifflin;
+  const normalRecommended =
+    normalResult.recommendedFormula === 'katchMcArdle'
+      ? normalResult.katchMcArdle
+      : normalResult.mifflin;
 
   const goalLabel =
     recommended.goal === 'cut'
@@ -98,6 +122,66 @@ export default function PlanView({ profile }: Props) {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* リーンカット モード切替 */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <div className="flex items-start justify-between gap-3 mb-2">
+          <div className="flex-1">
+            <div className="text-sm font-semibold text-gray-900">
+              💪 リーンカットモード
+            </div>
+            <div className="text-xs text-gray-600 mt-0.5">
+              筋肉維持を最優先（タンパク質強化 + 減量ペース 0.5-0.75%/週）
+            </div>
+            {profile.priority && (
+              <div className="text-[10px] text-gray-400 mt-1">
+                優先度: {PRIORITY_LABELS[profile.priority]}
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setLeanCutMode(!leanCutMode)}
+            className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors ${
+              leanCutMode ? 'bg-blue-600' : 'bg-gray-300'
+            }`}
+            aria-pressed={leanCutMode}
+            aria-label="リーンカットモード切替"
+          >
+            <span
+              className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                leanCutMode ? 'translate-x-6' : 'translate-x-1'
+              }`}
+            />
+          </button>
+        </div>
+        {/* 差分: 通常 cut → リーンカット */}
+        {leanCutMode &&
+          recommended.goal === 'cut' &&
+          normalRecommended.goal === 'cut' && (
+            <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-3 gap-2 text-xs">
+              <DiffCell
+                label="タンパク質"
+                normalVal={normalRecommended.protein_g}
+                leanVal={recommended.protein_g}
+                unit="g"
+              />
+              <DiffCell
+                label="目標kcal"
+                normalVal={normalRecommended.targetCalories}
+                leanVal={recommended.targetCalories}
+                unit="kcal"
+              />
+              <DiffCell
+                label="週次変化"
+                normalVal={normalRecommended.weeklyDeltaKg}
+                leanVal={recommended.weeklyDeltaKg}
+                unit="kg/週"
+                decimals={2}
+              />
+            </div>
+          )}
       </div>
 
       {/* ハイライト：推奨値 */}
@@ -174,6 +258,45 @@ export default function PlanView({ profile }: Props) {
         >
           食事を記録する →
         </Link>
+      </div>
+    </div>
+  );
+}
+
+function DiffCell({
+  label,
+  normalVal,
+  leanVal,
+  unit,
+  decimals = 0,
+}: {
+  label: string;
+  normalVal: number;
+  leanVal: number;
+  unit: string;
+  decimals?: number;
+}) {
+  const diff = leanVal - normalVal;
+  const sign = diff > 0 ? '+' : '';
+  const fmt = (n: number) =>
+    decimals > 0 ? n.toFixed(decimals) : Math.round(n).toString();
+  const diffColor =
+    Math.abs(diff) < 0.01
+      ? 'text-gray-500'
+      : diff > 0
+        ? 'text-emerald-600'
+        : 'text-rose-600';
+  return (
+    <div className="bg-gray-50 rounded-lg p-2">
+      <div className="text-gray-500">{label}</div>
+      <div className="font-semibold tabular-nums">
+        {fmt(leanVal)}
+        <span className="text-[10px] text-gray-500 ml-1">{unit}</span>
+      </div>
+      <div className={`text-[10px] tabular-nums ${diffColor}`}>
+        {sign}
+        {fmt(diff)}
+        {unit === 'kcal' || unit === 'g' ? '' : ''}
       </div>
     </div>
   );

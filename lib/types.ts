@@ -9,6 +9,8 @@ export type MealType =
   | 'pre_workout'
   | 'post_workout';
 
+export type Priority = 'fat_loss' | 'muscle_retention' | 'recomposition';
+
 export interface Profile {
   user_id: string;
   height_cm: number;
@@ -20,9 +22,17 @@ export interface Profile {
   target_weight_kg: number;
   target_body_fat_pct: number;
   target_period: Period;
+  lean_cut_mode?: boolean;
+  priority?: Priority;
   created_at?: string;
   updated_at?: string;
 }
+
+export const PRIORITY_LABELS: Record<Priority, string> = {
+  fat_loss: '体脂肪優先',
+  muscle_retention: '筋肉維持優先',
+  recomposition: '同時達成（リコンプ）',
+};
 
 export interface MealLog {
   id: string;
@@ -187,4 +197,74 @@ export interface RecurringExpense {
   is_active: boolean;
   created_at?: string;
   updated_at?: string;
+}
+
+// =================
+// 文献リサーチ
+// =================
+export interface ResearchCitation {
+  title: string;
+  url: string;
+}
+
+export interface ResearchArticle {
+  id: string;
+  user_id: string;
+  topic: string;
+  focus: string | null;
+  summary: string;
+  citations: ResearchCitation[];
+  is_favorite: boolean;
+  created_at: string;
+  expires_at: string;
+}
+
+export const RESEARCH_PRESET_TOPICS = [
+  'リーンカット',
+  'タンパク質タイミング',
+  'レジスタンストレーニング容量',
+  'リフィード／ダイエットブレイク',
+  'アナボリックウィンドウ',
+  'ボディリコンポジション',
+  'ミニカット',
+  '睡眠と減量',
+] as const;
+
+// =================
+// 食事タイミング解析
+// =================
+export interface MealTimingAnalysis {
+  intervalsHours: number[];
+  proteinPerMeal: number[];
+  leucineThresholdMet: number;
+  totalMeals: number;
+  distribution: 'even' | 'front-loaded' | 'back-loaded' | 'unknown';
+  longestGapHours: number;
+  notes: string[];
+}
+
+export interface MealTimingAdvice {
+  perMealProteinTargetG: number;
+  recommendedMealCount: number;
+  preWorkout: { hoursBefore: number; carbsG: number; proteinG: number };
+  postWorkout: { hoursAfter: number; proteinG: number; carbsG: number };
+  notes: string[];
+  alerts: string[];
+}
+
+// =================
+// 深掘り分析
+// =================
+export interface HistoricalAnalysis {
+  windowDays: number;
+  caloriesAdherenceMedianPct: number;
+  proteinAdherenceMedianPct: number;
+  weightSlopeKgPerWeek: number;
+  weightSlopeAccelKgPerWeek2: number;
+  consistencyScore: number; // 0-100
+  weightVolatilityKg: number;
+  sleepWeightCorrelation: number | null;
+  fatigueAdherenceCorrelation: number | null;
+  isPlateau: boolean;
+  plateauReason: string | null;
 }

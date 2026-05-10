@@ -2,7 +2,13 @@ import 'server-only';
 
 import { sql } from '@/lib/db';
 import { calculate } from '@/lib/calculations';
-import { linearRegression, daysBetween } from '@/lib/stats';
+import {
+  correlation,
+  daysBetween,
+  detectPlateau,
+  linearRegression,
+  volatility,
+} from '@/lib/stats';
 import {
   BOWEL_LABELS,
   FATIGUE_LABELS,
@@ -12,6 +18,7 @@ import {
   QUALITY_LABELS,
   TRAINING_FREQ_LABELS,
   type DailyLog,
+  type HistoricalAnalysis,
   type MealLog,
   type Profile,
 } from '@/lib/types';
@@ -33,6 +40,8 @@ export interface UserContext {
   dailyLogs: DailyLog[];
   /** 体重トレンド分析 */
   weightTrend: WeightTrend | null;
+  /** 過去14-30日の深掘り分析 */
+  historicalAnalysis: HistoricalAnalysis | null;
 }
 
 export interface WeightTrend {
@@ -178,6 +187,125 @@ export async function buildUserContext(
     stats,
     dailyLogs,
     weightTrend,
+    historicalAnalysis: computeHistoricalAnalysis(
+      dailyTotals,
+      dailyLogs,
+      target,
+      daysBack,
+    ),
+  };
+}
+
+function computeHistoricalAnalysis(
+  dailyTotals: DailyTotal[],
+  dailyLogs: DailyLog[],
+  target: UserContext['target'],
+  windowDays: number,
+): HistoricalAnalysis | null {
+  if (dailyTotals.length === 0 && dailyLogs.length === 0) return null;
+
+  // adherence pct
+  let caloriesAdherence: number[] = [];
+  let proteinAdherence: number[] = [];
+  if (target) {
+    caloriesAdherence = dailyTotals.map((d) =>
+      Math.round((d.calories / target.calories) * 100),
+    );
+    proteinAdherence = dailyTotals.map((d) =>
+      Math.round((d.protein_g / target.protein_g) * 100),
+    );
+  }
+  const median = (xs: number[]): number => {
+    if (xs.length === 0) return 0;
+    const s = [...xs].sort((a, b) => a - b);
+    const mid = Math.floor(s.length / 2);
+    return s.length % 2 === 0 ? Math.round((s[mid - 1] + s[mid]) / 2) : s[mid];
+  };
+
+  // 体重スロープ・加速度
+  const weighted = dailyLogs
+    .filter((l) => l.weight_kg !== null)
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
+  let weightSlopeKgPerWeek = 0;
+  let weightSlopeAccelKgPerWeek2 = 0;
+  let weightVolatilityKg = 0;
+  if (weighted.length >= 2) {
+    const baseDate = weighted[0].date;
+    const points = weighted.map((l) => ({
+      x: daysBetween(baseDate, l.date),
+      y: Number(l.weight_kg),
+    }));
+    const fit = linearRegression(points);
+    if (fit) weightSlopeKgPerWeek = fit.slope * 7;
+    weightVolatilityKg = volatility(points.map((p) => p.y));
+
+    if (weighted.length >= 14) {
+      const half = Math.floor(weighted.length / 2);
+      const fitOld = linearRegression(points.slice(0, half));
+      const fitNew = linearRegression(points.slice(half));
+      if (fitOld && fitNew) {
+        weightSlopeAccelKgPerWeek2 = (fitNew.slope - fitOld.slope) * 7;
+      }
+    }
+  }
+
+  // 記録継続率
+  const consistencyScore = Math.round(
+    (Math.min(dailyLogs.length, windowDays) / windowDays) * 100,
+  );
+
+  // 相関分析（睡眠 vs 体重日次変化）
+  let sleepWeightCorrelation: number | null = null;
+  if (weighted.length >= 4) {
+    const sleepArr: number[] = [];
+    const dWeightArr: number[] = [];
+    for (let i = 1; i < weighted.length; i++) {
+      const sleep = weighted[i].sleep_hours;
+      if (sleep === null || sleep === undefined) continue;
+      sleepArr.push(Number(sleep));
+      dWeightArr.push(
+        Number(weighted[i].weight_kg) - Number(weighted[i - 1].weight_kg),
+      );
+    }
+    sleepWeightCorrelation = correlation(sleepArr, dWeightArr);
+  }
+
+  // 相関分析（疲労度 vs カロリー達成率）
+  let fatigueAdherenceCorrelation: number | null = null;
+  if (weighted.length >= 4 && target && dailyTotals.length >= 4) {
+    const dailyByDate = new Map(dailyTotals.map((d) => [d.date, d.calories]));
+    const fatigueArr: number[] = [];
+    const adhArr: number[] = [];
+    for (const log of weighted) {
+      const fat = log.fatigue;
+      const cals = dailyByDate.get(log.date);
+      if (fat !== null && fat !== undefined && cals !== undefined) {
+        fatigueArr.push(Number(fat));
+        adhArr.push(Math.round((cals / target.calories) * 100));
+      }
+    }
+    fatigueAdherenceCorrelation = correlation(fatigueArr, adhArr);
+  }
+
+  // 停滞期判定
+  const series = weighted.map((l) => ({
+    date: l.date,
+    weight: Number(l.weight_kg),
+  }));
+  const plateau = detectPlateau(series, 7, 7);
+
+  return {
+    windowDays,
+    caloriesAdherenceMedianPct: median(caloriesAdherence),
+    proteinAdherenceMedianPct: median(proteinAdherence),
+    weightSlopeKgPerWeek,
+    weightSlopeAccelKgPerWeek2,
+    consistencyScore,
+    weightVolatilityKg,
+    sleepWeightCorrelation,
+    fatigueAdherenceCorrelation,
+    isPlateau: plateau.isPlateau,
+    plateauReason: plateau.reason,
   };
 }
 
@@ -362,6 +490,22 @@ export function formatContextForAI(ctx: UserContext): string {
     );
   }
 
+  // 深掘り分析
+  if (ctx.historicalAnalysis) {
+    const ha = ctx.historicalAnalysis;
+    const fmtCorr = (v: number | null): string =>
+      v === null
+        ? 'N/A'
+        : Math.abs(v) < 0.2
+          ? `${v.toFixed(2)} (相関ほぼなし)`
+          : Math.abs(v) < 0.5
+            ? `${v.toFixed(2)} (弱い)`
+            : `${v.toFixed(2)} (中-強)`;
+    parts.push(
+      `【深掘り分析(過去${ha.windowDays}日)】記録継続率 ${ha.consistencyScore}% / カロリー達成率中央値 ${ha.caloriesAdherenceMedianPct}% / タンパク質達成率中央値 ${ha.proteinAdherenceMedianPct}% / 体重スロープ ${ha.weightSlopeKgPerWeek >= 0 ? '+' : ''}${ha.weightSlopeKgPerWeek.toFixed(2)}kg/週 / 加速度 ${ha.weightSlopeAccelKgPerWeek2 >= 0 ? '+' : ''}${ha.weightSlopeAccelKgPerWeek2.toFixed(2)}kg/週² / 体重volatility ${ha.weightVolatilityKg.toFixed(2)}kg / 睡眠×体重変化 ${fmtCorr(ha.sleepWeightCorrelation)} / 疲労×カロリー達成 ${fmtCorr(ha.fatigueAdherenceCorrelation)} / 停滞期: ${ha.isPlateau ? `あり (${ha.plateauReason ?? ''})` : 'なし'}`,
+    );
+  }
+
   const s = ctx.stats;
   parts.push(
     `【食事記録状況】過去14日: 記録日数 ${s.daysLogged}日 / 食事件数 ${s.totalLogs}件 / 連続記録 ${s.consecutiveDaysLogged}日`,
@@ -416,17 +560,41 @@ export function formatContextForAI(ctx: UserContext): string {
 /** AIアシスタント共通のシステムプロンプト */
 export function buildSystemPrompt(ctx: UserContext): string {
   const userInfo = formatContextForAI(ctx);
-  return `あなたは経験豊富なスポーツ栄養士兼パーソナルトレーナーです。最新のスポーツ栄養学（ISSN Position Stand、ACSM Guidelines）と運動生理学の知見に基づき、日本語で的確かつ実践的なアドバイスを提供します。
+  const leanCutMode = ctx.profile?.lean_cut_mode === true;
+  const priority = ctx.profile?.priority;
+  const priorityNote = priority
+    ? `\n- ユーザーの優先度: ${priority === 'fat_loss' ? '体脂肪優先' : priority === 'muscle_retention' ? '筋肉維持優先' : 'ボディリコンポジション（同時達成）'}`
+    : '';
+
+  return `あなたは経験豊富なスポーツ栄養士兼パーソナルトレーナーです。最新のスポーツ栄養学・運動生理学の知見に基づき、日本語で的確かつ実践的なアドバイスを提供します。
+
+【専門的に押さえている知見】
+- ISSN Position Stand: Diets and Body Composition (Aragon et al., 2017) — リーンカット時のタンパク質 2.3-3.1 g/kg LBM、減量ペース 0.5-1.0%/週
+- ISSN Position Stand: Protein and Exercise (Jäger et al., 2017)
+- ISSN Position Stand: Nutrient Timing (Kerksick et al., 2017) — 食事間隔・タイミング栄養学
+- Schoenfeld & Aragon JISSN 2018 — 1食あたり 0.4-0.55 g/kg BW、leucine threshold 20-40g
+- Aragon & Schoenfeld JISSN 2013 — anabolic window は数時間に拡張
+- Schoenfeld 2017 — 筋肥大の週次セット数 10-20/筋群
+- Helms et al. 2014 — natural bodybuilding contest preparation
+- Byrne et al. (MATADOR) 2018 — 4週減量+1週維持の代謝適応抑制
+- Barakat et al. 2020 — Body Recomposition の達成条件
+- Trexler et al. 2014 — metabolic adaptation と plateau breaker
 
 【あなたの役割】
 - ユーザーの食事記録・身体データ・体重トレンド・コンディション(睡眠/疲労/気分/便通)を総合的に解釈し、エビデンスに基づくアドバイスを行う
 - 体重トレンド（線形回帰の予測値・週次変化）が目標に対して妥当かを評価し、必要なら摂取量や運動量の調整を具体的に提案する
+- 食事タイミング（meal_type/time）から leucine threshold 達成度や運動前後の最適化を評価
 - 睡眠不足や慢性疲労、便通異常などのコンディション悪化が見られた場合は、それらが目標達成に与える影響を栄養・トレーニングの観点で言及する
+- 直近14日のスロープ・volatility・相関を考慮し、停滞期や過剰減量を見抜く
 - 専門用語は使ってよいが、難しい概念は短い補足を添える
 - 過度に長くせず、要点を簡潔にまとめる（基本3-5文程度。質問が複雑な場合のみ詳述）
 - 数値は具体的に（"タンパク質を増やしましょう" ではなく "あと20gほど増やすと目標到達" のように）
 - 医療相談・診断は行わず、必要なら医師・管理栄養士への相談を促す
-- 危険な極端ダイエットや誤情報は明確に否定する
+- 危険な極端ダイエットや誤情報は明確に否定する${
+    leanCutMode
+      ? '\n- ★ユーザーは**リーンカットモード**ON → 筋肉維持を最優先し、タンパク質確保とレジスタンストレーニングの重要性を強調する'
+      : ''
+  }${priorityNote}
 
 【ユーザー情報】
 ${userInfo}

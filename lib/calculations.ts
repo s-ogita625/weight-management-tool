@@ -11,7 +11,7 @@
  *  - ACSM Guidelines for Exercise Testing and Prescription (11th ed.)
  */
 
-import type { Gender, Period, TrainingFreq } from './types';
+import type { Gender, Period, Priority, TrainingFreq } from './types';
 
 export interface CalcInput {
   heightCm: number;
@@ -23,6 +23,10 @@ export interface CalcInput {
   targetWeightKg: number;
   targetBodyFatPct: number;
   period: Period;
+  /** リーンカット モード（筋肉維持を最優先した安全な減量） */
+  leanCutMode?: boolean;
+  /** 優先度 */
+  priority?: Priority;
 }
 
 export interface FormulaResult {
@@ -99,12 +103,14 @@ function buildResult(
   const totalDeltaKg = input.targetWeightKg - input.weightKg;
   const rawWeekly = totalDeltaKg / weeks;
 
-  // 安全レンジ: ±1%/週 にクランプ
-  const maxWeekly = input.weightKg * 0.01;
+  const isLeanCut = input.leanCutMode === true;
+
+  // 安全レンジ: 通常 ±1%/週、リーンカット時は ±0.75%/週 (ISSN/Helms 2014: 0.5-1.0%)
+  const maxWeekly = input.weightKg * (isLeanCut ? 0.0075 : 0.01);
   const clampedWeekly = clamp(rawWeekly, -maxWeekly, maxWeekly);
   if (Math.abs(rawWeekly) > maxWeekly) {
     warnings.push(
-      `期間が短すぎるため、週次変化を安全レンジ（体重の±1%/週）にクランプしました（理想 ${rawWeekly.toFixed(2)}kg/週 → 採用 ${clampedWeekly.toFixed(2)}kg/週）`,
+      `${isLeanCut ? 'リーンカット時の安全レンジ（±0.75%/週）' : '安全レンジ（体重の±1%/週）'}を超えていたためクランプしました（理想 ${rawWeekly.toFixed(2)}kg/週 → 採用 ${clampedWeekly.toFixed(2)}kg/週）`,
     );
   }
 
@@ -120,19 +126,49 @@ function buildResult(
   let protein_g: number;
   let fat_g: number;
   if (goal === 'cut') {
-    protein_g = 2.2 * lbmKg; // 2.0–2.4 g/kg LBM
-    fat_g = 0.9 * input.weightKg; // 0.8–1.0 g/kg BW
+    // 通常 cut: 2.2 g/kg LBM / リーンカット時は 2.4 g/kg LBM (ISSN max range)
+    protein_g = (isLeanCut ? 2.4 : 2.2) * lbmKg;
+    fat_g = 0.9 * input.weightKg; // 0.8–1.0 g/kg BW（ホルモン維持の最低値）
   } else if (goal === 'bulk') {
     protein_g = 1.8 * lbmKg; // 1.6–2.2 g/kg LBM
     fat_g = (targetCalories * 0.275) / 9; // ~27.5% kcal
   } else {
-    protein_g = 1.8 * input.weightKg;
+    // maintain - リコンプならタンパク質を高めに (Barakat 2020)
+    const isRecomp = input.priority === 'recomposition';
+    protein_g = (isRecomp ? 2.2 : 1.8) * input.weightKg;
     fat_g = (targetCalories * 0.275) / 9;
   }
   const carbs_g = Math.max(
     0,
     (targetCalories - protein_g * 4 - fat_g * 9) / 4,
   );
+
+  // リーンカット時の追加警告
+  if (isLeanCut && goal === 'cut') {
+    warnings.push(
+      'リーンカットではレジスタンストレーニング週2-3回以上が筋量維持に必須です（Schoenfeld 2017, 各筋群週10-20セット）',
+    );
+    if (input.period === '3mo' || input.period === '6mo' || input.period === '1yr') {
+      warnings.push(
+        '4週以上の減量では1週間の維持カロリー（refeed/diet break）を挟むと代謝適応を抑え、筋量維持に有利です（MATADOR study, Byrne 2018）',
+      );
+    }
+  }
+  if (isLeanCut && goal === 'bulk') {
+    warnings.push(
+      'リーンカットモードは減量目的のみ有効です。目標体重が現体重を上回る場合はモードを OFF にしてください',
+    );
+  }
+  if (isLeanCut && goal === 'maintain') {
+    warnings.push(
+      'リーンカットモードは減量フェーズで効果を発揮します。維持期では通常モードまたはリコンプ優先度を検討してください',
+    );
+  }
+  if (input.priority === 'recomposition' && goal === 'maintain') {
+    warnings.push(
+      'ボディリコンポジション（同時に減量＋筋肥大）はトレーニング初心者・肥満者・休止期復帰者で達成しやすいとされます（Barakat et al., 2020）',
+    );
+  }
 
   // 警告チェック
   const minBF = input.gender === 'male' ? 5 : 12;
@@ -180,17 +216,21 @@ export function calculate(input: CalcInput): CalcOutput {
   const mifflin = buildResult(mifflinBMR, input, lbmKg);
   const katchMcArdle = buildResult(katchBMR, input, lbmKg);
 
-  // 推奨式：体脂肪率が信頼できる（ユーザー入力済み）かつ筋トレ頻度が高い場合
-  // Katch-McArdle のほうが除脂肪体重を反映するため精度が高い。
+  // 推奨式：リーンカット時は除脂肪体重ベースの精度が必要なため Katch-McArdle 固定
+  // 通常時は筋トレ頻度が高い場合のみ Katch-McArdle を推奨
   const recommendedFormula: 'mifflin' | 'katchMcArdle' =
-    input.trainingFreq === '3-4' || input.trainingFreq === '5+'
+    input.leanCutMode === true ||
+    input.trainingFreq === '3-4' ||
+    input.trainingFreq === '5+'
       ? 'katchMcArdle'
       : 'mifflin';
 
   const recommendedNote =
-    recommendedFormula === 'katchMcArdle'
-      ? '筋トレ習慣があり体脂肪率が把握できているため、除脂肪体重を反映する Katch-McArdle 式を主に参考にすることを推奨します。'
-      : '体脂肪率の測定精度に依存しないため、まずは Mifflin-St Jeor 式の値を主に参考にすることを推奨します。';
+    input.leanCutMode === true
+      ? 'リーンカット時は除脂肪体重を反映する Katch-McArdle 式の値を採用しています（筋量維持の精度が高いため）。'
+      : recommendedFormula === 'katchMcArdle'
+        ? '筋トレ習慣があり体脂肪率が把握できているため、除脂肪体重を反映する Katch-McArdle 式を主に参考にすることを推奨します。'
+        : '体脂肪率の測定精度に依存しないため、まずは Mifflin-St Jeor 式の値を主に参考にすることを推奨します。';
 
   return {
     mifflin,
