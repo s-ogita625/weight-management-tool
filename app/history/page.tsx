@@ -20,7 +20,7 @@ export default async function HistoryPage() {
     where user_id = ${userId}
     order by date desc, time desc nulls last, created_at desc
     limit 300
-  `) as MealLog[];
+  `) as unknown as MealLog[];
 
   return (
     <div className="py-4 space-y-4">
