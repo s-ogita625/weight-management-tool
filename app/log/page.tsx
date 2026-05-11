@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import MealLogForm from '@/components/forms/MealLogForm';
 import TodayMealList from '@/components/forms/TodayMealList';
+import RemainingCalories from '@/components/log/RemainingCalories';
 import { calculate } from '@/lib/calculations';
 import { getSessionUserId } from '@/lib/auth';
 import { dateInJST } from '@/lib/date';
@@ -139,6 +140,20 @@ export default async function LogPage() {
           />
         </div>
       </div>
+
+      {/* 残りカロリー + 面白い食材換算 */}
+      {target && (
+        <RemainingCalories
+          totalCalories={total.calories}
+          targetCalories={target.calories}
+          totalProtein={total.protein_g}
+          targetProtein={target.protein_g}
+          totalFat={total.fat_g}
+          targetFat={target.fat_g}
+          totalCarbs={total.carbs_g}
+          targetCarbs={target.carbs_g}
+        />
+      )}
 
       {mealRows.length > 0 && (
         <div>

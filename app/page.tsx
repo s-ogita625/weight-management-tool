@@ -1,8 +1,10 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getSessionUserId } from '@/lib/auth';
+import { calculate } from '@/lib/calculations';
 import { dateInJST } from '@/lib/date';
 import { sql } from '@/lib/db';
+import { pickFunComparisons } from '@/lib/fun-foods';
 import { getRecurringMonthlyTotal } from '@/lib/recurring';
 import type { DailyLog, MealLog, Profile } from '@/lib/types';
 
@@ -95,6 +97,40 @@ export default async function Home() {
     { calories: 0, protein_g: 0, fat_g: 0, carbs_g: 0 },
   );
 
+  // 1日の目標カロリーを算出（リーンカット設定込み）
+  const calcResult = calculate({
+    heightCm: Number(profile.height_cm),
+    weightKg: Number(profile.current_weight_kg),
+    bodyFatPct: Number(profile.body_fat_pct),
+    age: Number(profile.age),
+    gender: profile.gender,
+    trainingFreq: profile.training_freq,
+    targetWeightKg: Number(profile.target_weight_kg),
+    targetBodyFatPct: Number(profile.target_body_fat_pct),
+    period: profile.target_period,
+    leanCutMode: profile.lean_cut_mode,
+    priority: profile.priority,
+  });
+  const dailyPlan =
+    calcResult.recommendedFormula === 'katchMcArdle'
+      ? calcResult.katchMcArdle
+      : calcResult.mifflin;
+  const remainingKcal = Math.max(
+    0,
+    dailyPlan.targetCalories - mealTotal.calories,
+  );
+  const overKcal = Math.max(0, mealTotal.calories - dailyPlan.targetCalories);
+  // ホームでは1日固定 seed で1つだけ食材例を表示（軽量）
+  const todaySeed =
+    new Date().getFullYear() * 10000 +
+    (new Date().getMonth() + 1) * 100 +
+    new Date().getDate();
+  const funExamples = pickFunComparisons(
+    overKcal > 0 ? overKcal : remainingKcal,
+    1,
+    todaySeed,
+  );
+
   const txTotalsRows = txTotalsRowsRaw as unknown as Array<{
     kind: 'income' | 'expense';
     total: number;
@@ -158,12 +194,31 @@ export default async function Home() {
           <div className="text-lg font-bold tabular-nums">
             {Math.round(mealTotal.calories).toLocaleString()} kcal
             <span className="text-xs font-normal text-gray-500 ml-1">
-              / {mealRows.length}件
+              / {Math.round(dailyPlan.targetCalories).toLocaleString()} 目標 ({mealRows.length}件)
             </span>
           </div>
           <div className="text-xs text-gray-600">
-            P{Math.round(mealTotal.protein_g)} F
-            {Math.round(mealTotal.fat_g)} C{Math.round(mealTotal.carbs_g)}
+            P{Math.round(mealTotal.protein_g)}/{Math.round(dailyPlan.protein_g)} F
+            {Math.round(mealTotal.fat_g)}/{Math.round(dailyPlan.fat_g)} C
+            {Math.round(mealTotal.carbs_g)}/{Math.round(dailyPlan.carbs_g)}
+          </div>
+          <div
+            className={`mt-1.5 text-xs font-medium ${
+              overKcal > 0
+                ? 'text-rose-600'
+                : remainingKcal < 200
+                  ? 'text-amber-600'
+                  : 'text-emerald-600'
+            }`}
+          >
+            {overKcal > 0
+              ? `🚨 ${Math.round(overKcal)}kcal オーバー`
+              : `🔥 残り ${Math.round(remainingKcal)}kcal`}
+            {funExamples.length > 0 && remainingKcal > 0 && overKcal === 0 && (
+              <span className="text-gray-500 font-normal ml-1">
+                = {funExamples[0].display}
+              </span>
+            )}
           </div>
         </div>
       </ShortcutCard>
