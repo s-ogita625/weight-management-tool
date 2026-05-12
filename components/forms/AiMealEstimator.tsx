@@ -49,14 +49,11 @@ export default function AiMealEstimator({ onApply }: Props) {
     if (!f) {
       setImageFile(null);
       setImagePreview(null);
-      if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
     setImageFile(f);
     const url = URL.createObjectURL(f);
     setImagePreview(url);
-    setError(null);
-    setResult(null);
   };
 
   const handleTextSubmit = async () => {
@@ -180,7 +177,7 @@ export default function AiMealEstimator({ onApply }: Props) {
                       : 'bg-white border-gray-300 text-gray-700'
                   }`}
                 >
-                  📷 写真から判定
+                  📷 写真から推定
                 </button>
               </div>
             </div>
@@ -212,56 +209,42 @@ export default function AiMealEstimator({ onApply }: Props) {
               ) : (
                 <div className="space-y-3 pt-2">
                   <p className="text-xs text-gray-600 leading-relaxed">
-                    食事の写真を選ぶか撮影すると、AIが料理を識別してカロリー・PFCを推定します
-                    （5MB以下、JPEG/PNG/WebP/GIF）
+                    食事の写真をアップロードすると、Claude AIが料理を識別し、
+                    カロリー・PFCを推定します（5MB以下、JPEG/PNG/WebP）
                   </p>
 
                   <input
                     type="file"
                     accept="image/jpeg,image/png,image/webp,image/gif"
+                    capture="environment"
                     ref={fileInputRef}
                     onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
                     className="hidden"
                   />
 
                   {imagePreview ? (
-                    <div className="space-y-2">
-                      <div className="relative">
-                        <img
-                          src={imagePreview}
-                          alt="プレビュー"
-                          className="w-full max-h-64 object-contain bg-gray-100 rounded-xl"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleFile(null)}
-                          className="absolute top-2 right-2 bg-white/90 rounded-full w-8 h-8 flex items-center justify-center shadow"
-                          aria-label="画像をクリア"
-                        >
-                          ×
-                        </button>
-                      </div>
+                    <div className="relative">
+                      <img
+                        src={imagePreview}
+                        alt="プレビュー"
+                        className="w-full max-h-64 object-contain bg-gray-100 rounded-xl"
+                      />
                       <button
                         type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="w-full h-9 rounded-lg border border-gray-300 bg-white text-gray-700 text-xs font-medium hover:bg-gray-50"
+                        onClick={() => handleFile(null)}
+                        className="absolute top-2 right-2 bg-white/90 rounded-full w-8 h-8 flex items-center justify-center shadow"
                       >
-                        🔄 別の画像を選ぶ
+                        ×
                       </button>
                     </div>
                   ) : (
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="w-full h-32 rounded-xl border-2 border-dashed border-purple-300 bg-purple-50 text-purple-700 text-sm flex flex-col items-center justify-center hover:bg-purple-100"
+                      className="w-full h-32 rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 text-gray-500 text-sm flex flex-col items-center justify-center hover:bg-gray-100"
                     >
-                      <span className="text-3xl mb-1">🖼</span>
-                      <span className="font-medium">
-                        タップして写真を選択 / 撮影
-                      </span>
-                      <span className="text-[10px] text-purple-600/80 mt-0.5">
-                        アルバムまたはカメラから選べます
-                      </span>
+                      <span className="text-3xl mb-1">📷</span>
+                      <span>タップして写真を選択 / 撮影</span>
                     </button>
                   )}
 
@@ -271,7 +254,7 @@ export default function AiMealEstimator({ onApply }: Props) {
                     disabled={loading || !imageFile}
                     className="w-full h-11 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-300 text-white font-semibold rounded-xl"
                   >
-                    {loading ? '🤖 認識中...' : 'この画像で判定する'}
+                    {loading ? '🤖 認識中...' : 'この画像で推定'}
                   </button>
                 </div>
               )}
