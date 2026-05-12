@@ -27,15 +27,20 @@ export default function AiMealEstimator({ onApply }: Props) {
   const [text, setText] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageSource, setImageSource] = useState<'camera' | 'upload' | null>(
+    null,
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AiEstimate | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
 
   const reset = () => {
     setText('');
     setImageFile(null);
     setImagePreview(null);
+    setImageSource(null);
     setError(null);
     setResult(null);
   };
@@ -45,15 +50,21 @@ export default function AiMealEstimator({ onApply }: Props) {
     setTimeout(reset, 300);
   };
 
-  const handleFile = (f: File | null) => {
+  const handleFile = (f: File | null, source: 'camera' | 'upload' | null) => {
     if (!f) {
       setImageFile(null);
       setImagePreview(null);
+      setImageSource(null);
+      if (cameraInputRef.current) cameraInputRef.current.value = '';
+      if (uploadInputRef.current) uploadInputRef.current.value = '';
       return;
     }
     setImageFile(f);
+    setImageSource(source);
     const url = URL.createObjectURL(f);
     setImagePreview(url);
+    setError(null);
+    setResult(null);
   };
 
   const handleTextSubmit = async () => {
@@ -124,7 +135,7 @@ export default function AiMealEstimator({ onApply }: Props) {
         onClick={() => setOpen(true)}
         className="w-full h-11 rounded-xl border border-purple-300 bg-purple-50 text-purple-700 text-sm font-medium hover:bg-purple-100"
       >
-        ✨ AIで推定する（テキスト / 写真）
+        ✨ AIで推定する（テキスト / 写真撮影・アップロード）
       </button>
 
       {open && (
@@ -177,7 +188,7 @@ export default function AiMealEstimator({ onApply }: Props) {
                       : 'bg-white border-gray-300 text-gray-700'
                   }`}
                 >
-                  📷 写真から推定
+                  📷 写真から判定
                 </button>
               </div>
             </div>
@@ -209,43 +220,96 @@ export default function AiMealEstimator({ onApply }: Props) {
               ) : (
                 <div className="space-y-3 pt-2">
                   <p className="text-xs text-gray-600 leading-relaxed">
-                    食事の写真をアップロードすると、Claude AIが料理を識別し、
-                    カロリー・PFCを推定します（5MB以下、JPEG/PNG/WebP）
+                    食事の写真をカメラで撮影するか、端末から既存の画像をアップロードすると、
+                    AIが料理を識別してカロリー・PFCを推定します（5MB以下、JPEG/PNG/WebP/GIF）
                   </p>
 
                   <input
                     type="file"
                     accept="image/jpeg,image/png,image/webp,image/gif"
                     capture="environment"
-                    ref={fileInputRef}
-                    onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
+                    ref={cameraInputRef}
+                    onChange={(e) =>
+                      handleFile(e.target.files?.[0] ?? null, 'camera')
+                    }
+                    className="hidden"
+                  />
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    ref={uploadInputRef}
+                    onChange={(e) =>
+                      handleFile(e.target.files?.[0] ?? null, 'upload')
+                    }
                     className="hidden"
                   />
 
                   {imagePreview ? (
-                    <div className="relative">
-                      <img
-                        src={imagePreview}
-                        alt="プレビュー"
-                        className="w-full max-h-64 object-contain bg-gray-100 rounded-xl"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleFile(null)}
-                        className="absolute top-2 right-2 bg-white/90 rounded-full w-8 h-8 flex items-center justify-center shadow"
-                      >
-                        ×
-                      </button>
+                    <div className="space-y-2">
+                      <div className="relative">
+                        <img
+                          src={imagePreview}
+                          alt="プレビュー"
+                          className="w-full max-h-64 object-contain bg-gray-100 rounded-xl"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleFile(null, null)}
+                          className="absolute top-2 right-2 bg-white/90 rounded-full w-8 h-8 flex items-center justify-center shadow"
+                          aria-label="画像をクリア"
+                        >
+                          ×
+                        </button>
+                        {imageSource && (
+                          <span className="absolute top-2 left-2 bg-white/90 text-[10px] px-2 py-0.5 rounded-full text-gray-700 shadow">
+                            {imageSource === 'camera'
+                              ? '📷 撮影'
+                              : '🖼 アップロード'}
+                          </span>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => cameraInputRef.current?.click()}
+                          className="h-9 rounded-lg border border-gray-300 bg-white text-gray-700 text-xs font-medium hover:bg-gray-50"
+                        >
+                          📷 撮り直す
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => uploadInputRef.current?.click()}
+                          className="h-9 rounded-lg border border-gray-300 bg-white text-gray-700 text-xs font-medium hover:bg-gray-50"
+                        >
+                          🖼 別の画像を選ぶ
+                        </button>
+                      </div>
                     </div>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="w-full h-32 rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 text-gray-500 text-sm flex flex-col items-center justify-center hover:bg-gray-100"
-                    >
-                      <span className="text-3xl mb-1">📷</span>
-                      <span>タップして写真を選択 / 撮影</span>
-                    </button>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => cameraInputRef.current?.click()}
+                        className="h-32 rounded-xl border-2 border-dashed border-purple-300 bg-purple-50 text-purple-700 text-sm flex flex-col items-center justify-center hover:bg-purple-100"
+                      >
+                        <span className="text-3xl mb-1">📷</span>
+                        <span className="font-medium">写真を撮影</span>
+                        <span className="text-[10px] text-purple-600/80 mt-0.5">
+                          カメラを起動
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => uploadInputRef.current?.click()}
+                        className="h-32 rounded-xl border-2 border-dashed border-blue-300 bg-blue-50 text-blue-700 text-sm flex flex-col items-center justify-center hover:bg-blue-100"
+                      >
+                        <span className="text-3xl mb-1">🖼</span>
+                        <span className="font-medium">写真をアップロード</span>
+                        <span className="text-[10px] text-blue-600/80 mt-0.5">
+                          端末から選択
+                        </span>
+                      </button>
+                    </div>
                   )}
 
                   <button
@@ -254,7 +318,7 @@ export default function AiMealEstimator({ onApply }: Props) {
                     disabled={loading || !imageFile}
                     className="w-full h-11 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-300 text-white font-semibold rounded-xl"
                   >
-                    {loading ? '🤖 認識中...' : 'この画像で推定'}
+                    {loading ? '🤖 認識中...' : 'この画像で判定する'}
                   </button>
                 </div>
               )}
