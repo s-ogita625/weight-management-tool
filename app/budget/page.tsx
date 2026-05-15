@@ -6,7 +6,7 @@ import { getSessionUserId } from '@/lib/auth';
 import { dateInJST } from '@/lib/date';
 import { sql } from '@/lib/db';
 import { getRecurringForMonth } from '@/lib/recurring';
-import type { Transaction } from '@/lib/types';
+import type { RecurringExpense, Transaction } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -52,25 +52,32 @@ export default async function BudgetPage({ searchParams }: Props) {
   const { start, end } = ymToRange(ym);
 
   // 当月のトランザクション、固定費、食事記録件数を並列取得
-  const [txRowsRaw, recurring, mealCountRowsRaw] = await Promise.all([
-    sql`
-      select id, user_id, to_char(date, 'YYYY-MM-DD') as date,
-             kind, category, amount, memo, created_at
-      from transactions
-      where user_id = ${userId}
-        and date >= ${start} and date < ${end}
-      order by date desc, created_at desc
-    `,
-    getRecurringForMonth(userId, ym),
-    sql`
-      select count(*)::int as cnt
-      from meal_logs
-      where user_id = ${userId}
-        and date >= ${start} and date < ${end}
-    `,
+  const txRowsP = sql`
+    select id, user_id, to_char(date, 'YYYY-MM-DD') as date,
+           kind, category, amount, memo, created_at
+    from transactions
+    where user_id = ${userId}
+      and date >= ${start} and date < ${end}
+    order by date desc, created_at desc
+  `;
+  const recurringP = getRecurringForMonth(userId, ym);
+  const mealCountP = sql`
+    select count(*)::int as cnt
+    from meal_logs
+    where user_id = ${userId}
+      and date >= ${start} and date < ${end}
+  `;
+  const [txRowsRaw, recurringRaw, mealCountRowsRaw] = await Promise.all([
+    txRowsP,
+    recurringP,
+    mealCountP,
   ]);
   const txItems = txRowsRaw as unknown as Transaction[];
-  const recurringTotal = recurring.reduce((a, r) => a + Number(r.amount), 0);
+  const recurring = recurringRaw as RecurringExpense[];
+  const recurringTotal = recurring.reduce(
+    (a, r) => a + Number(r.amount),
+    0,
+  );
 
   // トランザクション集計
   const txTotals = txItems.reduce(
