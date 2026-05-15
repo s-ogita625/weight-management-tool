@@ -122,7 +122,8 @@ export async function getMealSuggestions(
           order by date desc, created_at desc
         ) as rn,
         count(*) over (partition by food_name) as uses,
-        max(date) over (partition by food_name) as last_date
+        max(date) over (partition by food_name) as last_date,
+        max(created_at) over (partition by food_name) as last_created_at
       from meal_logs
       where user_id = ${userId}
         and food_name is not null
@@ -140,7 +141,7 @@ export async function getMealSuggestions(
       meal_type as last_meal_type
     from ranked
     where rn = 1
-    order by uses desc, last_date desc
+    order by uses desc, last_date desc, last_created_at desc
     limit ${limit}
   `) as unknown as MealSuggestion[];
 
