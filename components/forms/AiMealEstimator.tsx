@@ -21,23 +21,46 @@ interface Props {
 
 type Mode = 'text' | 'image';
 
+type PhotoStatus = 'pending' | 'loading' | 'done' | 'error';
+
+interface PhotoEntry {
+  id: string;
+  file: File;
+  previewUrl: string;
+  status: PhotoStatus;
+  result?: AiEstimate;
+  error?: string;
+}
+
+const MAX_PHOTOS = 8;
+const MAX_FILE_BYTES = 5 * 1024 * 1024;
+const ACCEPT_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+]);
+
 export default function AiMealEstimator({ onApply }: Props) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<Mode>('text');
   const [text, setText] = useState('');
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [textResult, setTextResult] = useState<AiEstimate | null>(null);
+  const [textLoading, setTextLoading] = useState(false);
+  const [entries, setEntries] = useState<PhotoEntry[]>([]);
+  const [imageLoading, setImageLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<AiEstimate | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const reset = () => {
     setText('');
-    setImageFile(null);
-    setImagePreview(null);
+    setTextResult(null);
+    setEntries((prev) => {
+      prev.forEach((e) => URL.revokeObjectURL(e.previewUrl));
+      return [];
+    });
     setError(null);
-    setResult(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const close = () => {
@@ -45,18 +68,49 @@ export default function AiMealEstimator({ onApply }: Props) {
     setTimeout(reset, 300);
   };
 
-  const handleFile = (f: File | null) => {
-    if (!f) {
-      setImageFile(null);
-      setImagePreview(null);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      return;
-    }
-    setImageFile(f);
-    const url = URL.createObjectURL(f);
-    setImagePreview(url);
+  const addFiles = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
     setError(null);
-    setResult(null);
+    const incoming = Array.from(files);
+    setEntries((prev) => {
+      const remainingSlots = Math.max(0, MAX_PHOTOS - prev.length);
+      if (remainingSlots === 0) {
+        setError(`画像は最大${MAX_PHOTOS}枚までです`);
+        return prev;
+      }
+      const accepted: PhotoEntry[] = [];
+      const rejected: string[] = [];
+      for (const f of incoming.slice(0, remainingSlots)) {
+        if (!ACCEPT_TYPES.has(f.type)) {
+          rejected.push(`${f.name}: 非対応の形式`);
+          continue;
+        }
+        if (f.size > MAX_FILE_BYTES) {
+          rejected.push(`${f.name}: 5MB超`);
+          continue;
+        }
+        accepted.push({
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          file: f,
+          previewUrl: URL.createObjectURL(f),
+          status: 'pending',
+        });
+      }
+      if (incoming.length > remainingSlots) {
+        rejected.push(`残り${remainingSlots}枚を超える分は追加しませんでした`);
+      }
+      if (rejected.length > 0) setError(rejected.join(' / '));
+      return [...prev, ...accepted];
+    });
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const removeEntry = (id: string) => {
+    setEntries((prev) => {
+      const target = prev.find((e) => e.id === id);
+      if (target) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((e) => e.id !== id);
+    });
   };
 
   const handleTextSubmit = async () => {
@@ -64,9 +118,9 @@ export default function AiMealEstimator({ onApply }: Props) {
       setError('食事内容を入力してください');
       return;
     }
-    setLoading(true);
+    setTextLoading(true);
     setError(null);
-    setResult(null);
+    setTextResult(null);
     try {
       const res = await fetch('/api/meal/parse', {
         method: 'POST',
@@ -77,46 +131,83 @@ export default function AiMealEstimator({ onApply }: Props) {
       if (!res.ok) {
         setError(json.error ?? `エラー: ${res.status}`);
       } else {
-        setResult(json.result);
+        setTextResult(json.result);
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setLoading(false);
+      setTextLoading(false);
     }
+  };
+
+  const recognizeOne = async (file: File): Promise<AiEstimate> => {
+    const fd = new FormData();
+    fd.append('image', file);
+    const res = await fetch('/api/meal/recognize', {
+      method: 'POST',
+      body: fd,
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      throw new Error(json.error ?? `エラー: ${res.status}`);
+    }
+    return json.result as AiEstimate;
   };
 
   const handleImageSubmit = async () => {
-    if (!imageFile) {
-      setError('画像を選択してください');
+    const targets = entries.filter(
+      (e) => e.status === 'pending' || e.status === 'error',
+    );
+    if (targets.length === 0) {
+      if (entries.length === 0) {
+        setError('画像を追加してください');
+      }
       return;
     }
-    setLoading(true);
+    setImageLoading(true);
     setError(null);
-    setResult(null);
-    try {
-      const fd = new FormData();
-      fd.append('image', imageFile);
-      const res = await fetch('/api/meal/recognize', {
-        method: 'POST',
-        body: fd,
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        setError(json.error ?? `エラー: ${res.status}`);
-      } else {
-        setResult(json.result);
-      }
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
+    setEntries((prev) =>
+      prev.map((e) =>
+        targets.some((t) => t.id === e.id)
+          ? { ...e, status: 'loading', error: undefined }
+          : e,
+      ),
+    );
+
+    await Promise.all(
+      targets.map(async (t) => {
+        try {
+          const r = await recognizeOne(t.file);
+          setEntries((prev) =>
+            prev.map((e) =>
+              e.id === t.id ? { ...e, status: 'done', result: r } : e,
+            ),
+          );
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          setEntries((prev) =>
+            prev.map((e) =>
+              e.id === t.id ? { ...e, status: 'error', error: msg } : e,
+            ),
+          );
+        }
+      }),
+    );
+
+    setImageLoading(false);
   };
 
-  const handleApply = () => {
-    if (!result) return;
-    onApply(result);
+  const totals = computeTotals(entries);
+
+  const handleApplyText = () => {
+    if (!textResult) return;
+    onApply(textResult);
+    close();
+  };
+
+  const handleApplyImageTotals = () => {
+    if (!totals) return;
+    onApply(totals);
     close();
   };
 
@@ -156,7 +247,6 @@ export default function AiMealEstimator({ onApply }: Props) {
                   type="button"
                   onClick={() => {
                     setMode('text');
-                    setResult(null);
                     setError(null);
                   }}
                   className={`h-11 rounded-xl border text-sm font-medium ${
@@ -171,7 +261,6 @@ export default function AiMealEstimator({ onApply }: Props) {
                   type="button"
                   onClick={() => {
                     setMode('image');
-                    setResult(null);
                     setError(null);
                   }}
                   className={`h-11 rounded-xl border text-sm font-medium ${
@@ -203,76 +292,149 @@ export default function AiMealEstimator({ onApply }: Props) {
                   <button
                     type="button"
                     onClick={handleTextSubmit}
-                    disabled={loading || !text.trim()}
+                    disabled={textLoading || !text.trim()}
                     className="w-full h-11 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-300 text-white font-semibold rounded-xl"
                   >
-                    {loading ? '🤖 推定中...' : '推定する'}
+                    {textLoading ? '🤖 推定中...' : '推定する'}
                   </button>
+
+                  {textResult && (
+                    <ResultCard
+                      title="✨ 推定結果"
+                      estimate={textResult}
+                      onApply={handleApplyText}
+                    />
+                  )}
                 </div>
               ) : (
                 <div className="space-y-3 pt-2">
                   <p className="text-xs text-gray-600 leading-relaxed">
-                    食事の写真を選ぶか撮影すると、AIが料理を識別してカロリー・PFCを推定します
-                    （5MB以下、JPEG/PNG/WebP/GIF）
+                    複数の食事写真をアップロード／撮影できます。各画像をAIが個別に判定し、合計カロリー・PFCを算出します
+                    （最大{MAX_PHOTOS}枚 / 各5MB以下 / JPEG・PNG・WebP・GIF）
                   </p>
 
                   <input
                     type="file"
                     accept="image/jpeg,image/png,image/webp,image/gif"
+                    multiple
                     ref={fileInputRef}
-                    onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
+                    onChange={(e) => addFiles(e.target.files)}
                     className="hidden"
                   />
 
-                  {imagePreview ? (
-                    <div className="space-y-2">
-                      <div className="relative">
-                        <img
-                          src={imagePreview}
-                          alt="プレビュー"
-                          className="w-full max-h-64 object-contain bg-gray-100 rounded-xl"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleFile(null)}
-                          className="absolute top-2 right-2 bg-white/90 rounded-full w-8 h-8 flex items-center justify-center shadow"
-                          aria-label="画像をクリア"
+                  {entries.length > 0 && (
+                    <ul className="space-y-2">
+                      {entries.map((entry, idx) => (
+                        <li
+                          key={entry.id}
+                          className="flex gap-3 items-start bg-white border border-gray-200 rounded-xl p-2"
                         >
-                          ×
-                        </button>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="w-full h-9 rounded-lg border border-gray-300 bg-white text-gray-700 text-xs font-medium hover:bg-gray-50"
-                      >
-                        🔄 別の画像を選ぶ
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="w-full h-32 rounded-xl border-2 border-dashed border-purple-300 bg-purple-50 text-purple-700 text-sm flex flex-col items-center justify-center hover:bg-purple-100"
-                    >
-                      <span className="text-3xl mb-1">🖼</span>
-                      <span className="font-medium">
-                        タップして写真を選択 / 撮影
-                      </span>
-                      <span className="text-[10px] text-purple-600/80 mt-0.5">
-                        アルバムまたはカメラから選べます
-                      </span>
-                    </button>
+                          <div className="relative shrink-0">
+                            <img
+                              src={entry.previewUrl}
+                              alt={`写真${idx + 1}`}
+                              className="w-20 h-20 object-cover rounded-lg bg-gray-100"
+                            />
+                            <span className="absolute top-1 left-1 bg-black/60 text-white text-[10px] px-1.5 rounded-full">
+                              #{idx + 1}
+                            </span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2">
+                              <PhotoStatusLine entry={entry} />
+                              <button
+                                type="button"
+                                onClick={() => removeEntry(entry.id)}
+                                className="text-gray-400 hover:text-gray-700 text-lg leading-none"
+                                aria-label="削除"
+                              >
+                                ×
+                              </button>
+                            </div>
+                            {entry.status === 'done' && entry.result && (
+                              <div className="mt-1 text-xs text-gray-700 space-y-0.5">
+                                <div className="font-medium truncate">
+                                  {entry.result.food_name || '(料理名未推定)'}
+                                </div>
+                                <div className="tabular-nums">
+                                  {Math.round(entry.result.calories)} kcal /
+                                  P{fmt(entry.result.protein_g)}g
+                                  F{fmt(entry.result.fat_g)}g
+                                  C{fmt(entry.result.carbs_g)}g
+                                </div>
+                              </div>
+                            )}
+                            {entry.status === 'error' && entry.error && (
+                              <div className="mt-1 text-xs text-red-600 line-clamp-2">
+                                {entry.error}
+                              </div>
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
                   )}
 
                   <button
                     type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={entries.length >= MAX_PHOTOS}
+                    className={`w-full rounded-xl border-2 border-dashed text-sm flex flex-col items-center justify-center ${
+                      entries.length === 0 ? 'h-32' : 'h-20'
+                    } ${
+                      entries.length >= MAX_PHOTOS
+                        ? 'border-gray-200 bg-gray-50 text-gray-400'
+                        : 'border-purple-300 bg-purple-50 text-purple-700 hover:bg-purple-100'
+                    }`}
+                  >
+                    <span className="text-2xl">🖼</span>
+                    <span className="font-medium">
+                      {entries.length === 0
+                        ? 'タップして写真を選択 / 撮影'
+                        : entries.length >= MAX_PHOTOS
+                          ? `最大${MAX_PHOTOS}枚に達しました`
+                          : `+ 写真を追加（${entries.length}/${MAX_PHOTOS}）`}
+                    </span>
+                    {entries.length === 0 && (
+                      <span className="text-[10px] text-purple-600/80 mt-0.5">
+                        複数選択可（アルバム or カメラ）
+                      </span>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={handleImageSubmit}
-                    disabled={loading || !imageFile}
+                    disabled={
+                      imageLoading ||
+                      entries.length === 0 ||
+                      entries.every((e) => e.status === 'done')
+                    }
                     className="w-full h-11 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-300 text-white font-semibold rounded-xl"
                   >
-                    {loading ? '🤖 認識中...' : 'この画像で判定する'}
+                    {imageLoading
+                      ? '🤖 認識中...'
+                      : entries.every((e) => e.status === 'done') &&
+                          entries.length > 0
+                        ? '判定済み'
+                        : `判定する${
+                            entries.filter(
+                              (e) =>
+                                e.status === 'pending' || e.status === 'error',
+                            ).length > 0
+                              ? `（${entries.filter((e) => e.status === 'pending' || e.status === 'error').length}枚）`
+                              : ''
+                          }`}
                   </button>
+
+                  {totals && (
+                    <ResultCard
+                      title={`🧮 合計（${entries.filter((e) => e.status === 'done').length}枚分）`}
+                      estimate={totals}
+                      onApply={handleApplyImageTotals}
+                      applyLabel="この合計をフォームに反映する"
+                    />
+                  )}
                 </div>
               )}
 
@@ -281,68 +443,106 @@ export default function AiMealEstimator({ onApply }: Props) {
                   {error}
                 </div>
               )}
-
-              {result && (
-                <div className="mt-4 bg-purple-50 border border-purple-200 rounded-xl p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="text-sm font-semibold text-purple-800">
-                      ✨ 推定結果
-                    </div>
-                    <ConfidenceBadge level={result.confidence} />
-                  </div>
-                  <div className="font-semibold text-base mb-1">
-                    {result.food_name || '(料理名未推定)'}
-                  </div>
-                  {result.items && result.items.length > 0 && (
-                    <div className="text-xs text-gray-600 mb-2">
-                      含まれる項目: {result.items.join(' / ')}
-                    </div>
-                  )}
-                  <div className="text-2xl font-bold tabular-nums">
-                    {Math.round(result.calories)} kcal
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 mt-2 text-center text-xs">
-                    <div className="bg-rose-50 rounded p-1.5">
-                      <div className="text-rose-600">P</div>
-                      <div className="font-semibold tabular-nums">
-                        {result.protein_g}g
-                      </div>
-                    </div>
-                    <div className="bg-amber-50 rounded p-1.5">
-                      <div className="text-amber-600">F</div>
-                      <div className="font-semibold tabular-nums">
-                        {result.fat_g}g
-                      </div>
-                    </div>
-                    <div className="bg-emerald-50 rounded p-1.5">
-                      <div className="text-emerald-600">C</div>
-                      <div className="font-semibold tabular-nums">
-                        {result.carbs_g}g
-                      </div>
-                    </div>
-                  </div>
-                  {result.notes && (
-                    <div className="text-xs text-gray-600 mt-2 leading-relaxed">
-                      💬 {result.notes}
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    onClick={handleApply}
-                    className="w-full mt-3 h-11 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-xl"
-                  >
-                    この値をフォームに反映する
-                  </button>
-                  <p className="text-[10px] text-gray-500 mt-2 leading-relaxed">
-                    ※ AIの推定値は目安です。市販品のラベル等を確認の上、必要に応じて編集してください。
-                  </p>
-                </div>
-              )}
             </div>
           </div>
         </>
       )}
     </>
+  );
+}
+
+function PhotoStatusLine({ entry }: { entry: PhotoEntry }) {
+  if (entry.status === 'pending') {
+    return (
+      <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+        未判定
+      </span>
+    );
+  }
+  if (entry.status === 'loading') {
+    return (
+      <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+        🤖 判定中...
+      </span>
+    );
+  }
+  if (entry.status === 'error') {
+    return (
+      <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+        エラー
+      </span>
+    );
+  }
+  // done
+  return entry.result ? (
+    <ConfidenceBadge level={entry.result.confidence} />
+  ) : null;
+}
+
+function ResultCard({
+  title,
+  estimate,
+  onApply,
+  applyLabel = 'この値をフォームに反映する',
+}: {
+  title: string;
+  estimate: AiEstimate;
+  onApply: () => void;
+  applyLabel?: string;
+}) {
+  return (
+    <div className="mt-4 bg-purple-50 border border-purple-200 rounded-xl p-4">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-sm font-semibold text-purple-800">{title}</div>
+        <ConfidenceBadge level={estimate.confidence} />
+      </div>
+      <div className="font-semibold text-base mb-1">
+        {estimate.food_name || '(料理名未推定)'}
+      </div>
+      {estimate.items && estimate.items.length > 0 && (
+        <div className="text-xs text-gray-600 mb-2">
+          含まれる項目: {estimate.items.join(' / ')}
+        </div>
+      )}
+      <div className="text-2xl font-bold tabular-nums">
+        {Math.round(estimate.calories)} kcal
+      </div>
+      <div className="grid grid-cols-3 gap-2 mt-2 text-center text-xs">
+        <div className="bg-rose-50 rounded p-1.5">
+          <div className="text-rose-600">P</div>
+          <div className="font-semibold tabular-nums">
+            {fmt(estimate.protein_g)}g
+          </div>
+        </div>
+        <div className="bg-amber-50 rounded p-1.5">
+          <div className="text-amber-600">F</div>
+          <div className="font-semibold tabular-nums">
+            {fmt(estimate.fat_g)}g
+          </div>
+        </div>
+        <div className="bg-emerald-50 rounded p-1.5">
+          <div className="text-emerald-600">C</div>
+          <div className="font-semibold tabular-nums">
+            {fmt(estimate.carbs_g)}g
+          </div>
+        </div>
+      </div>
+      {estimate.notes && (
+        <div className="text-xs text-gray-600 mt-2 leading-relaxed">
+          💬 {estimate.notes}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={onApply}
+        className="w-full mt-3 h-11 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-xl"
+      >
+        {applyLabel}
+      </button>
+      <p className="text-[10px] text-gray-500 mt-2 leading-relaxed">
+        ※ AIの推定値は目安です。市販品のラベル等を確認の上、必要に応じて編集してください。
+      </p>
+    </div>
   );
 }
 
@@ -359,4 +559,82 @@ function ConfidenceBadge({ level }: { level: 'high' | 'medium' | 'low' }) {
       {labels[level].text}
     </span>
   );
+}
+
+function computeTotals(entries: PhotoEntry[]): AiEstimate | null {
+  const done = entries.filter(
+    (e): e is PhotoEntry & { result: AiEstimate } =>
+      e.status === 'done' && !!e.result,
+  );
+  if (done.length === 0) return null;
+
+  let calories = 0;
+  let protein = 0;
+  let fat = 0;
+  let carbs = 0;
+  const names: string[] = [];
+  const items: string[] = [];
+  const notes: string[] = [];
+  const mealTypeVotes: Record<string, number> = {};
+  const confidenceRank: Record<AiEstimate['confidence'], number> = {
+    high: 3,
+    medium: 2,
+    low: 1,
+  };
+  let worstConfidence: AiEstimate['confidence'] = 'high';
+
+  for (const { result } of done) {
+    calories += result.calories;
+    protein += result.protein_g;
+    fat += result.fat_g;
+    carbs += result.carbs_g;
+    if (result.food_name) names.push(result.food_name);
+    if (Array.isArray(result.items)) items.push(...result.items);
+    if (result.notes) notes.push(result.notes);
+    if (result.meal_type) {
+      mealTypeVotes[result.meal_type] =
+        (mealTypeVotes[result.meal_type] ?? 0) + 1;
+    }
+    if (confidenceRank[result.confidence] < confidenceRank[worstConfidence]) {
+      worstConfidence = result.confidence;
+    }
+  }
+
+  const meal_type =
+    (Object.entries(mealTypeVotes).sort(
+      (a, b) => b[1] - a[1],
+    )[0]?.[0] as MealType | undefined) ?? null;
+
+  const uniqueItems = Array.from(new Set(items)).slice(0, 30);
+
+  return {
+    food_name:
+      names.length === 0
+        ? `写真${done.length}枚の合計`
+        : names.length === 1
+          ? names[0]
+          : `${names.slice(0, 2).join(' + ')}${names.length > 2 ? ` ほか${names.length - 2}件` : ''}`,
+    calories: round1(calories),
+    protein_g: round1(protein),
+    fat_g: round1(fat),
+    carbs_g: round1(carbs),
+    meal_type,
+    confidence: worstConfidence,
+    notes:
+      done.length === 1
+        ? notes[0] ?? ''
+        : `写真${done.length}枚の合計値です。${notes.length > 0 ? notes[0] : ''}`.slice(
+            0,
+            300,
+          ),
+    items: uniqueItems.length > 0 ? uniqueItems : undefined,
+  };
+}
+
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
+function fmt(n: number): string {
+  return Number.isInteger(n) ? String(n) : String(round1(n));
 }
