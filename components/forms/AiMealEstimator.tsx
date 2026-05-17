@@ -33,13 +33,17 @@ interface PhotoEntry {
 }
 
 const MAX_PHOTOS = 8;
-const MAX_FILE_BYTES = 5 * 1024 * 1024;
+const MAX_FILE_BYTES = 25 * 1024 * 1024; // 元ファイルは大きくてもOK（送信前にクライアント側で圧縮）
 const ACCEPT_TYPES = new Set([
   'image/jpeg',
   'image/png',
   'image/webp',
   'image/gif',
+  'image/heic',
+  'image/heif',
+  '', // iOSではmime空で来ることがあるため受け入れて拡張子でフォールバック判定
 ]);
+const ACCEPT_EXT_RE = /\.(jpe?g|png|webp|gif|heic|heif)$/i;
 
 export default function AiMealEstimator({ onApply }: Props) {
   const [open, setOpen] = useState(false);
@@ -81,12 +85,14 @@ export default function AiMealEstimator({ onApply }: Props) {
       const accepted: PhotoEntry[] = [];
       const rejected: string[] = [];
       for (const f of incoming.slice(0, remainingSlots)) {
-        if (!ACCEPT_TYPES.has(f.type)) {
+        const okByMime = ACCEPT_TYPES.has(f.type);
+        const okByExt = ACCEPT_EXT_RE.test(f.name);
+        if (!okByMime && !okByExt) {
           rejected.push(`${f.name}: 非対応の形式`);
           continue;
         }
         if (f.size > MAX_FILE_BYTES) {
-          rejected.push(`${f.name}: 5MB超`);
+          rejected.push(`${f.name}: ${Math.round(MAX_FILE_BYTES / (1024 * 1024))}MB超`);
           continue;
         }
         accepted.push({
@@ -141,17 +147,39 @@ export default function AiMealEstimator({ onApply }: Props) {
   };
 
   const recognizeOne = async (file: File): Promise<AiEstimate> => {
+    const prepared = await prepareForUpload(file);
     const fd = new FormData();
-    fd.append('image', file);
-    const res = await fetch('/api/meal/recognize', {
-      method: 'POST',
-      body: fd,
-    });
-    const json = await res.json();
+    fd.append('image', prepared);
+    let res: Response;
+    try {
+      res = await fetch('/api/meal/recognize', {
+        method: 'POST',
+        body: fd,
+      });
+    } catch {
+      throw new Error('通信エラーが発生しました。電波状況を確認して再試行してください');
+    }
+    const ct = res.headers.get('content-type') ?? '';
+    if (!ct.includes('application/json')) {
+      // Vercel/プロキシが非JSON（HTMLエラーページ等）を返したケース
+      if (res.status === 413) {
+        throw new Error('画像サイズが大きすぎます（縮小に失敗）');
+      }
+      throw new Error(`サーバエラー（HTTP ${res.status}）。少し経ってから再試行してください`);
+    }
+    let json: { result?: AiEstimate; error?: string };
+    try {
+      json = await res.json();
+    } catch {
+      throw new Error('サーバ応答を解析できませんでした');
+    }
     if (!res.ok) {
       throw new Error(json.error ?? `エラー: ${res.status}`);
     }
-    return json.result as AiEstimate;
+    if (!json.result) {
+      throw new Error('AIの応答に結果が含まれていません');
+    }
+    return json.result;
   };
 
   const handleImageSubmit = async () => {
@@ -310,12 +338,12 @@ export default function AiMealEstimator({ onApply }: Props) {
                 <div className="space-y-3 pt-2">
                   <p className="text-xs text-gray-600 leading-relaxed">
                     複数の食事写真をアップロード／撮影できます。各画像をAIが個別に判定し、合計カロリー・PFCを算出します
-                    （最大{MAX_PHOTOS}枚 / 各5MB以下 / JPEG・PNG・WebP・GIF）
+                    （最大{MAX_PHOTOS}枚 / 大きな画像は自動で縮小して送信されます）
                   </p>
 
                   <input
                     type="file"
-                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,image/*"
                     multiple
                     ref={fileInputRef}
                     onChange={(e) => addFiles(e.target.files)}
@@ -637,4 +665,89 @@ function round1(n: number): number {
 
 function fmt(n: number): string {
   return Number.isInteger(n) ? String(n) : String(round1(n));
+}
+
+const UPLOAD_MAX_DIM = 1600;
+const UPLOAD_MAX_BYTES = 2 * 1024 * 1024;
+const VERCEL_BODY_LIMIT = 4 * 1024 * 1024;
+
+async function prepareForUpload(file: File): Promise<File> {
+  // 元ファイルが小さく、かつ既に対応MIMEならそのまま返す
+  if (
+    file.size <= UPLOAD_MAX_BYTES &&
+    /^image\/(jpeg|png|webp|gif)$/.test(file.type)
+  ) {
+    return file;
+  }
+  try {
+    return await compressImage(file);
+  } catch {
+    // 圧縮失敗時：元ファイルが Vercel 上限以内かつ対応MIMEなら fallback で送る
+    if (
+      file.size <= VERCEL_BODY_LIMIT &&
+      /^image\/(jpeg|png|webp|gif)$/.test(file.type)
+    ) {
+      return file;
+    }
+    throw new Error('画像の前処理に失敗しました。別の写真でお試しください');
+  }
+}
+
+async function compressImage(file: File): Promise<File> {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await loadImage(url);
+    const { width, height } = scaleDown(img.width, img.height, UPLOAD_MAX_DIM);
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas 2D context not available');
+    ctx.drawImage(img, 0, 0, width, height);
+
+    let quality = 0.85;
+    let blob = await canvasToBlob(canvas, quality);
+    while (blob.size > UPLOAD_MAX_BYTES && quality > 0.45) {
+      quality -= 0.1;
+      blob = await canvasToBlob(canvas, quality);
+    }
+    const baseName = file.name.replace(/\.[^.]+$/, '') || 'photo';
+    return new File([blob], `${baseName}.jpg`, { type: 'image/jpeg' });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
+    img.src = src;
+  });
+}
+
+function scaleDown(
+  w: number,
+  h: number,
+  maxDim: number,
+): { width: number; height: number } {
+  const longest = Math.max(w, h);
+  if (longest <= maxDim) return { width: w, height: h };
+  const ratio = maxDim / longest;
+  return { width: Math.round(w * ratio), height: Math.round(h * ratio) };
+}
+
+function canvasToBlob(
+  canvas: HTMLCanvasElement,
+  quality: number,
+): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (b) =>
+        b ? resolve(b) : reject(new Error('canvas.toBlob returned null')),
+      'image/jpeg',
+      quality,
+    );
+  });
 }
