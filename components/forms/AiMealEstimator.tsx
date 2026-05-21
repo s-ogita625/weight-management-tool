@@ -197,19 +197,22 @@ export default function AiMealEstimator({ onApply }: Props) {
     file: File,
     onAttempt?: (attempt: number, waitMs: number) => void,
   ): Promise<AiEstimate> => {
-    const MAX_ATTEMPTS = 4;
+    // Gemini Flash 無料枠は ~10 RPM。RPM をリセットさせるには最低でも 60s 待ちが必要。
+    // 短すぎる待ちでリトライしても無駄に終わるので、RPM の窓ごとに復旧を狙う。
+    const WAIT_SCHEDULE_MS = [10_000, 30_000, 60_000];
     let lastErr: unknown;
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    for (let attempt = 0; attempt <= WAIT_SCHEDULE_MS.length; attempt++) {
       try {
         return await recognizeOne(file);
       } catch (err) {
         lastErr = err;
         const isRateLimit =
           err instanceof RecognizeError &&
-          (err.status === 429 || /利用上限|quota|exceeded|429/i.test(err.message));
-        if (!isRateLimit || attempt === MAX_ATTEMPTS) throw err;
-        const waitMs = 1500 * Math.pow(2, attempt - 1); // 1.5s, 3s, 6s
-        onAttempt?.(attempt, waitMs);
+          (err.status === 429 ||
+            /利用上限|quota|exceeded|429/i.test(err.message));
+        if (!isRateLimit || attempt === WAIT_SCHEDULE_MS.length) throw err;
+        const waitMs = WAIT_SCHEDULE_MS[attempt];
+        onAttempt?.(attempt + 1, waitMs);
         await sleep(waitMs);
       }
     }

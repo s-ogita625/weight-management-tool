@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { Type } from '@google/genai';
 import { getSessionUserId } from '@/lib/auth';
-import { getGeminiClient, GEMINI_FLASH } from '@/lib/ai/gemini';
+import {
+  getGeminiClient,
+  GEMINI_FLASH,
+  GEMINI_FLASH_2,
+} from '@/lib/ai/gemini';
 import type { MealType } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -122,33 +126,52 @@ export async function POST(req: Request) {
     const base64 = Buffer.from(arrayBuffer).toString('base64');
 
     const client = getGeminiClient();
-    const response = await client.models.generateContent({
-      model: GEMINI_FLASH,
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            {
-              inlineData: {
-                mimeType: file.type,
-                data: base64,
+
+    // gemini-2.5-flash の無料枠は 10 RPM / 250 RPD と非常に厳しい。
+    // 429 / RESOURCE_EXHAUSTED が出た場合は 2.0-flash（無料枠が緩い）にフォールバックして再試行する。
+    const runModel = (model: string) =>
+      client.models.generateContent({
+        model,
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  mimeType: file.type,
+                  data: base64,
+                },
               },
-            },
-            {
-              text: 'この食事の写真を分析して、JSON形式で出力してください。',
-            },
-          ],
+              {
+                text: 'この食事の写真を分析して、JSON形式で出力してください。',
+              },
+            ],
+          },
+        ],
+        config: {
+          systemInstruction: SYSTEM_PROMPT,
+          maxOutputTokens: 2500,
+          temperature: 0.4,
+          responseMimeType: 'application/json',
+          responseSchema: RESPONSE_SCHEMA,
+          thinkingConfig: { thinkingBudget: 0 },
         },
-      ],
-      config: {
-        systemInstruction: SYSTEM_PROMPT,
-        maxOutputTokens: 2500,
-        temperature: 0.4,
-        responseMimeType: 'application/json',
-        responseSchema: RESPONSE_SCHEMA,
-        thinkingConfig: { thinkingBudget: 0 },
-      },
-    });
+      });
+
+    let response: Awaited<ReturnType<typeof runModel>>;
+    try {
+      response = await runModel(GEMINI_FLASH);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/\b429\b|quota|exceeded|RESOURCE_EXHAUSTED/i.test(msg)) {
+        console.warn(
+          `[meal/recognize] ${GEMINI_FLASH} hit rate limit, fallback to ${GEMINI_FLASH_2}`,
+        );
+        response = await runModel(GEMINI_FLASH_2);
+      } else {
+        throw err;
+      }
+    }
 
     const raw = response.text ?? '';
     const parsed = parseAndValidate(raw);
