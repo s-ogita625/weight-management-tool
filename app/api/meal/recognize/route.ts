@@ -163,8 +163,18 @@ export async function POST(req: Request) {
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error('[meal/recognize] error:', msg);
+    // Gemini のレート制限・クォータ超過を 429 に正規化
+    if (/\b429\b|quota|exceeded|rate\s*limit|RESOURCE_EXHAUSTED/i.test(msg)) {
+      return NextResponse.json(
+        {
+          error:
+            'AIの利用上限に達しました。少し時間を置いて再試行してください',
+        },
+        { status: 429 },
+      );
+    }
     return NextResponse.json(
-      { error: `画像認識に失敗しました: ${msg}` },
+      { error: '画像認識に失敗しました。少し経ってから再試行してください' },
       { status: 500 },
     );
   }
