@@ -157,29 +157,63 @@ export default function AiMealEstimator({ onApply }: Props) {
         body: fd,
       });
     } catch {
-      throw new Error('通信エラーが発生しました。電波状況を確認して再試行してください');
+      throw new RecognizeError(
+        '通信エラーが発生しました。電波状況を確認して再試行してください',
+        0,
+      );
     }
     const ct = res.headers.get('content-type') ?? '';
     if (!ct.includes('application/json')) {
-      // Vercel/プロキシが非JSON（HTMLエラーページ等）を返したケース
       if (res.status === 413) {
-        throw new Error('画像サイズが大きすぎます（縮小に失敗）');
+        throw new RecognizeError(
+          '画像サイズが大きすぎます（縮小に失敗）',
+          413,
+        );
       }
-      throw new Error(`サーバエラー（HTTP ${res.status}）。少し経ってから再試行してください`);
+      throw new RecognizeError(
+        `サーバエラー（HTTP ${res.status}）。少し経ってから再試行してください`,
+        res.status,
+      );
     }
     let json: { result?: AiEstimate; error?: string };
     try {
       json = await res.json();
     } catch {
-      throw new Error('サーバ応答を解析できませんでした');
+      throw new RecognizeError('サーバ応答を解析できませんでした', res.status);
     }
     if (!res.ok) {
-      throw new Error(json.error ?? `エラー: ${res.status}`);
+      throw new RecognizeError(
+        friendlyServerError(json.error, res.status),
+        res.status,
+      );
     }
     if (!json.result) {
-      throw new Error('AIの応答に結果が含まれていません');
+      throw new RecognizeError('AIの応答に結果が含まれていません', res.status);
     }
     return json.result;
+  };
+
+  const recognizeWithRetry = async (
+    file: File,
+    onAttempt?: (attempt: number, waitMs: number) => void,
+  ): Promise<AiEstimate> => {
+    const MAX_ATTEMPTS = 4;
+    let lastErr: unknown;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        return await recognizeOne(file);
+      } catch (err) {
+        lastErr = err;
+        const isRateLimit =
+          err instanceof RecognizeError &&
+          (err.status === 429 || /利用上限|quota|exceeded|429/i.test(err.message));
+        if (!isRateLimit || attempt === MAX_ATTEMPTS) throw err;
+        const waitMs = 1500 * Math.pow(2, attempt - 1); // 1.5s, 3s, 6s
+        onAttempt?.(attempt, waitMs);
+        await sleep(waitMs);
+      }
+    }
+    throw lastErr;
   };
 
   const handleImageSubmit = async () => {
@@ -202,25 +236,29 @@ export default function AiMealEstimator({ onApply }: Props) {
       ),
     );
 
-    await Promise.all(
-      targets.map(async (t) => {
-        try {
-          const r = await recognizeOne(t.file);
-          setEntries((prev) =>
-            prev.map((e) =>
-              e.id === t.id ? { ...e, status: 'done', result: r } : e,
-            ),
-          );
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          setEntries((prev) =>
-            prev.map((e) =>
-              e.id === t.id ? { ...e, status: 'error', error: msg } : e,
-            ),
-          );
-        }
-      }),
-    );
+    // Gemini API のレート制限（典型的に 15 RPM）を避けるため逐次処理
+    for (const t of targets) {
+      try {
+        const r = await recognizeWithRetry(t.file);
+        setEntries((prev) =>
+          prev.map((e) =>
+            e.id === t.id ? { ...e, status: 'done', result: r } : e,
+          ),
+        );
+      } catch (err) {
+        const msg =
+          err instanceof Error
+            ? err.message
+            : typeof err === 'string'
+              ? err
+              : '不明なエラー';
+        setEntries((prev) =>
+          prev.map((e) =>
+            e.id === t.id ? { ...e, status: 'error', error: msg } : e,
+          ),
+        );
+      }
+    }
 
     setImageLoading(false);
   };
@@ -665,6 +703,35 @@ function round1(n: number): number {
 
 function fmt(n: number): string {
   return Number.isInteger(n) ? String(n) : String(round1(n));
+}
+
+class RecognizeError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+  ) {
+    super(message);
+    this.name = 'RecognizeError';
+  }
+}
+
+function friendlyServerError(
+  raw: string | undefined,
+  status: number,
+): string {
+  if (status === 429 || (raw && /429|quota|exceeded|rate/i.test(raw))) {
+    return 'AIの利用上限に達しました。少し時間を置いて再試行してください';
+  }
+  if (!raw) return `エラー: ${status}`;
+  // JSON 風のダンプはユーザーには出さない
+  if (raw.includes('"code"') || raw.includes('"message"')) {
+    return `画像認識に失敗しました（HTTP ${status}）`;
+  }
+  return raw.length > 120 ? raw.slice(0, 120) + '...' : raw;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 const UPLOAD_MAX_DIM = 1600;
