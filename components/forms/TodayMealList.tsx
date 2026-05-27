@@ -43,7 +43,7 @@ export default function TodayMealList({ logs }: Props) {
               <span className="font-semibold">
                 {Math.round(Number(l.calories))} kcal
               </span>
-              <span className="text-gray-500 ml-2">
+              <span className="ml-2 font-semibold text-slate-300">
                 P{Math.round(Number(l.protein_g))} F
                 {Math.round(Number(l.fat_g))} C{Math.round(Number(l.carbs_g))}
               </span>

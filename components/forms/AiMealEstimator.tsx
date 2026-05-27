@@ -576,25 +576,10 @@ function ResultCard({
       <div className="text-2xl font-bold tabular-nums">
         {Math.round(estimate.calories)} kcal
       </div>
-      <div className="grid grid-cols-3 gap-2 mt-2 text-center text-xs">
-        <div className="bg-rose-50 rounded p-1.5">
-          <div className="text-rose-600">P</div>
-          <div className="font-semibold tabular-nums">
-            {fmt(estimate.protein_g)}g
-          </div>
-        </div>
-        <div className="bg-amber-50 rounded p-1.5">
-          <div className="text-amber-600">F</div>
-          <div className="font-semibold tabular-nums">
-            {fmt(estimate.fat_g)}g
-          </div>
-        </div>
-        <div className="bg-emerald-50 rounded p-1.5">
-          <div className="text-emerald-600">C</div>
-          <div className="font-semibold tabular-nums">
-            {fmt(estimate.carbs_g)}g
-          </div>
-        </div>
+      <div className="mt-2 grid grid-cols-3 gap-2 text-center text-xs">
+        <EstimateMacroCell label="P" value={`${fmt(estimate.protein_g)}g`} tone="protein" />
+        <EstimateMacroCell label="F" value={`${fmt(estimate.fat_g)}g`} tone="fat" />
+        <EstimateMacroCell label="C" value={`${fmt(estimate.carbs_g)}g`} tone="carbs" />
       </div>
       {estimate.notes && (
         <div className="text-xs text-gray-600 mt-2 leading-relaxed">
@@ -611,6 +596,30 @@ function ResultCard({
       <p className="text-[10px] text-gray-500 mt-2 leading-relaxed">
         ※ AIの推定値は目安です。市販品のラベル等を確認の上、必要に応じて編集してください。
       </p>
+    </div>
+  );
+}
+
+function EstimateMacroCell({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: 'protein' | 'fat' | 'carbs';
+}) {
+  const toneClass =
+    tone === 'protein'
+      ? 'text-rose-200 border-rose-300/25'
+      : tone === 'fat'
+        ? 'text-amber-200 border-amber-300/25'
+        : 'text-[#a3ff12] border-[#a3ff12]/25';
+
+  return (
+    <div className={`rounded-lg border bg-black/30 p-1.5 ${toneClass}`}>
+      <div className="font-black">{label}</div>
+      <div className="font-black tabular-nums text-white">{value}</div>
     </div>
   );
 }

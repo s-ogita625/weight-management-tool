@@ -74,19 +74,10 @@ export default function RemainingCalories({
       </div>
 
       {/* マクロ別残り */}
-      <div className="grid grid-cols-3 gap-2 mt-3 text-center text-xs">
-        <div className="bg-white/60 rounded-lg p-2">
-          <div className="text-rose-600">P 残り</div>
-          <div className="font-semibold tabular-nums">{Math.round(remP)}g</div>
-        </div>
-        <div className="bg-white/60 rounded-lg p-2">
-          <div className="text-amber-600">F 残り</div>
-          <div className="font-semibold tabular-nums">{Math.round(remF)}g</div>
-        </div>
-        <div className="bg-white/60 rounded-lg p-2">
-          <div className="text-emerald-600">C 残り</div>
-          <div className="font-semibold tabular-nums">{Math.round(remC)}g</div>
-        </div>
+      <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+        <RemainderMacroCell label="P 残り" value={remP} tone="protein" />
+        <RemainderMacroCell label="F 残り" value={remF} tone="fat" />
+        <RemainderMacroCell label="C 残り" value={remC} tone="carbs" />
       </div>
 
       {/* 面白い食材例 */}
@@ -110,6 +101,32 @@ export default function RemainingCalories({
           残りカロリーが少ないため、軽い間食程度です
         </div>
       )}
+    </div>
+  );
+}
+
+function RemainderMacroCell({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: 'protein' | 'fat' | 'carbs';
+}) {
+  const color =
+    tone === 'protein'
+      ? 'text-rose-200'
+      : tone === 'fat'
+        ? 'text-amber-200'
+        : 'text-[#a3ff12]';
+
+  return (
+    <div className="rounded-lg border border-white/15 bg-black/35 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+      <div className={`font-bold ${color}`}>{label}</div>
+      <div className="mt-0.5 font-black tabular-nums text-white">
+        {Math.round(value)}g
+      </div>
     </div>
   );
 }

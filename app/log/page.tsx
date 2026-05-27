@@ -121,22 +121,22 @@ export default async function LogPage() {
         </div>
         <div className="grid grid-cols-3 gap-2 mt-3 text-center text-xs">
           <MacroCell
-            color="bg-rose-50 text-rose-600"
             label="P"
             actual={total.protein_g}
             target={target?.protein_g}
+            tone="protein"
           />
           <MacroCell
-            color="bg-amber-50 text-amber-600"
             label="F"
             actual={total.fat_g}
             target={target?.fat_g}
+            tone="fat"
           />
           <MacroCell
-            color="bg-emerald-50 text-emerald-600"
             label="C"
             actual={total.carbs_g}
             target={target?.carbs_g}
+            tone="carbs"
           />
         </div>
       </div>
@@ -175,24 +175,30 @@ export default async function LogPage() {
 }
 
 function MacroCell({
-  color,
   label,
   actual,
   target,
+  tone,
 }: {
-  color: string;
   label: string;
   actual: number;
   target?: number;
+  tone: 'protein' | 'fat' | 'carbs';
 }) {
-  const [bg, txt] = color.split(' ');
+  const toneClass =
+    tone === 'protein'
+      ? 'text-rose-200 border-rose-300/25'
+      : tone === 'fat'
+        ? 'text-amber-200 border-amber-300/25'
+        : 'text-[#a3ff12] border-[#a3ff12]/25';
+
   return (
-    <div className={`rounded-lg p-2 ${bg}`}>
-      <div className={txt}>{label}</div>
-      <div className="font-semibold tabular-nums">
+    <div className={`rounded-lg border bg-black/30 p-2 ${toneClass}`}>
+      <div className="font-black">{label}</div>
+      <div className="font-black tabular-nums text-white">
         {Math.round(actual)}g
         {target && (
-          <span className="font-normal text-gray-500">
+          <span className="font-semibold text-slate-300">
             /{Math.round(target)}
           </span>
         )}
