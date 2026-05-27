@@ -1,5 +1,6 @@
 'use client';
 
+import { Zap } from 'lucide-react';
 import Link from 'next/link';
 import { useActionState } from 'react';
 import { signupAction } from '@/app/actions/auth';
@@ -9,8 +10,14 @@ export default function SignupForm() {
 
   return (
     <div className="py-8">
-      <h1 className="text-2xl font-bold mb-6">新規登録</h1>
-      <form action={formAction} className="space-y-4">
+      <div className="sport-card-strong mb-5 p-5">
+        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-[#a3ff12] text-[#061006]">
+          <Zap size={22} />
+        </div>
+        <div className="sport-kicker">Start tracking</div>
+        <h1 className="mt-1 text-3xl font-black">新規登録</h1>
+      </div>
+      <form action={formAction} className="sport-card space-y-4 p-4">
         <div>
           <label className="block text-sm font-medium mb-1">メールアドレス</label>
           <input
@@ -38,7 +45,7 @@ export default function SignupForm() {
         <button
           type="submit"
           disabled={pending}
-          className="w-full h-12 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold rounded-xl"
+          className="sport-button-primary h-12 w-full"
         >
           {pending ? '登録中...' : '新規登録'}
         </button>

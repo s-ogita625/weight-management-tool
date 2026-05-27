@@ -1,6 +1,6 @@
 export default function CitationNote() {
   return (
-    <details className="bg-white rounded-xl border border-gray-200 p-4 text-sm">
+    <details className="sport-card p-4 text-sm">
       <summary className="font-semibold text-gray-700 cursor-pointer">
         計算根拠と参考文献
       </summary>

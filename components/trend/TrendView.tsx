@@ -127,16 +127,16 @@ export default function TrendView({ logs, profile }: Props) {
   }, [filtered, baseDate]);
 
   // X軸ラベル（予測グラフは未来日も含む）
-  const xLabelsWithFuture = useMemo(() => {
-    if (filtered.length === 0 || !fit) return xLabels;
-    const lastDate = filtered[filtered.length - 1].date;
-    const lastX = daysBetween(baseDate, lastDate);
-    const futureDate = addDays(lastDate, 30);
-    return [
-      ...xLabels,
-      { x: lastX + 30, label: shortDate(futureDate) + '(予測)' },
-    ];
-  }, [xLabels, fit, filtered, baseDate]);
+  const xLabelsWithFuture =
+    filtered.length === 0 || !fit
+      ? xLabels
+      : [
+          ...xLabels,
+          {
+            x: daysBetween(baseDate, filtered[filtered.length - 1].date) + 30,
+            label: `${shortDate(addDays(filtered[filtered.length - 1].date, 30))}(予測)`,
+          },
+        ];
 
   const fetchAdvice = async () => {
     setAiLoading(true);

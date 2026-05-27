@@ -45,15 +45,17 @@ export default function RecurringForm({ initial, onDone }: Props) {
 
   useEffect(() => {
     if (state && 'ok' in state && state.ok) {
-      if (!isEdit) {
-        formRef.current?.reset();
-        setName('');
-        setAmount('');
-        setPurpose('');
-        setEndMonth('');
-      }
-      router.refresh();
-      onDone?.();
+      window.setTimeout(() => {
+        if (!isEdit) {
+          formRef.current?.reset();
+          setName('');
+          setAmount('');
+          setPurpose('');
+          setEndMonth('');
+        }
+        router.refresh();
+        onDone?.();
+      }, 0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);

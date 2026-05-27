@@ -45,7 +45,7 @@ export default function LineChart({
   const allPoints = series.flatMap((s) => s.points);
   if (allPoints.length === 0) {
     return (
-      <div className="h-32 flex items-center justify-center text-sm text-gray-400 bg-gray-50 rounded-xl">
+      <div className="flex h-32 items-center justify-center rounded-lg border border-white/10 bg-white/[0.035] text-sm text-gray-400">
         データがありません
       </div>
     );
@@ -81,7 +81,7 @@ export default function LineChart({
   });
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-3">
+    <div className="sport-card p-3">
       <svg
         viewBox={`0 0 ${W} ${H}`}
         width="100%"
@@ -96,7 +96,7 @@ export default function LineChart({
               x2={W - PAD_R}
               y1={sy(v)}
               y2={sy(v)}
-              stroke="#e5e7eb"
+              stroke="rgba(255,255,255,0.12)"
               strokeWidth={1}
             />
             <text
@@ -104,7 +104,7 @@ export default function LineChart({
               y={sy(v) + 4}
               textAnchor="end"
               fontSize="10"
-              fill="#6b7280"
+              fill="#93a4b8"
             >
               {Math.round(v * 10) / 10}
               {yUnit}
@@ -120,7 +120,7 @@ export default function LineChart({
             y={H - 8}
             textAnchor="middle"
             fontSize="10"
-            fill="#6b7280"
+            fill="#93a4b8"
           >
             {tick.label}
           </text>
@@ -162,7 +162,7 @@ export default function LineChart({
       </svg>
 
       {/* 凡例 */}
-      <div className="flex flex-wrap gap-3 text-xs text-gray-600 mt-1">
+      <div className="mt-1 flex flex-wrap gap-3 text-xs text-gray-600">
         {series.map((s) => (
           <div key={s.label} className="flex items-center gap-1">
             <span

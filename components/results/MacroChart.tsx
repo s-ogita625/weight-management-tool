@@ -13,7 +13,7 @@ export default function MacroChart({ result }: Props) {
 
   return (
     <div className="space-y-3">
-      <div className="flex h-8 rounded-lg overflow-hidden border border-gray-200">
+      <div className="flex h-8 overflow-hidden rounded-lg border border-white/10 bg-black/20">
         <div
           className="bg-rose-500 flex items-center justify-center text-xs text-white font-semibold"
           style={{ width: `${pct(pKcal)}%` }}
@@ -57,7 +57,7 @@ function Cell({
   kcal: number;
 }) {
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-2">
+    <div className="rounded-lg border border-white/10 bg-white/[0.035] p-2">
       <div className="flex items-center gap-1 mb-1">
         <span className={`inline-block w-2 h-2 rounded-full ${color}`} />
         <span className="text-gray-600">{label}</span>

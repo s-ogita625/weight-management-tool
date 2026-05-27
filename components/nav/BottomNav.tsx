@@ -1,36 +1,55 @@
 'use client';
 
+import {
+  BarChart3,
+  Bot,
+  CalendarDays,
+  CircleDollarSign,
+  Dumbbell,
+  History,
+  Home,
+  LogOut,
+  Menu,
+  MessageCircle,
+  Moon,
+  Settings,
+  Sparkles,
+  Utensils,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { logoutAction } from '@/app/actions/auth';
 
-const mainItems = [
-  { href: '/', label: 'ホーム', icon: '🏠' },
-  { href: '/morning', label: '朝記録', icon: '🌅' },
-  { href: '/log', label: '食事', icon: '🍽️' },
-  { href: '/budget', label: '家計簿', icon: '💴' },
+type NavItem = {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+};
+
+const mainItems: NavItem[] = [
+  { href: '/', label: 'ホーム', icon: Home },
+  { href: '/morning', label: '朝記録', icon: Dumbbell },
+  { href: '/log', label: '食事', icon: Utensils },
+  { href: '/budget', label: '家計簿', icon: CircleDollarSign },
 ];
 
-const moreItems = [
-  { href: '/plan', label: '食事プラン', icon: '📊' },
-  { href: '/trend', label: 'トレンド分析', icon: '📈' },
-  { href: '/history', label: '食事履歴', icon: '📅' },
-  { href: '/budget/recurring', label: '固定費の管理', icon: '📌' },
-  { href: '/coach', label: 'AIコーチング', icon: '💡' },
-  { href: '/chat', label: 'AIチャット', icon: '💬' },
-  { href: '/research', label: '文献リサーチ', icon: '📚' },
-  { href: '/onboarding', label: 'プロフィール編集', icon: '⚙️' },
+const moreItems: NavItem[] = [
+  { href: '/plan', label: '食事プラン', icon: BarChart3 },
+  { href: '/trend', label: 'トレンド分析', icon: Sparkles },
+  { href: '/history', label: '食事履歴', icon: History },
+  { href: '/budget/recurring', label: '固定費の管理', icon: CalendarDays },
+  { href: '/coach', label: 'AIコーチング', icon: Bot },
+  { href: '/chat', label: 'AIチャット', icon: MessageCircle },
+  { href: '/research', label: '文献リサーチ', icon: Moon },
+  { href: '/onboarding', label: 'プロフィール編集', icon: Settings },
 ];
 
 export default function BottomNav() {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
-
-  // ページ遷移時にメニューを閉じる
-  useEffect(() => {
-    setMenuOpen(false);
-  }, [pathname]);
 
   // body スクロール抑止
   useEffect(() => {
@@ -44,31 +63,35 @@ export default function BottomNav() {
 
   return (
     <>
-      <nav className="fixed bottom-0 inset-x-0 h-16 bg-white border-t border-gray-200 grid grid-cols-5 z-40 md:relative md:max-w-2xl md:mx-auto md:mt-8 md:rounded-xl md:border md:shadow-sm">
+      <nav className="fixed bottom-0 inset-x-0 z-40 grid h-[72px] grid-cols-5 border-t border-white/10 bg-[#080c13]/95 px-1 pb-[env(safe-area-inset-bottom)] shadow-[0_-18px_45px_rgba(0,0,0,0.42)] backdrop-blur-xl md:relative md:mx-auto md:mt-8 md:max-w-2xl md:rounded-lg md:border">
         {mainItems.map((item) => {
           const active =
             item.href === '/'
               ? pathname === '/'
               : pathname?.startsWith(item.href);
+          const Icon = item.icon;
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`flex flex-col items-center justify-center text-[11px] gap-0.5 leading-tight px-1 text-center ${
-                active ? 'text-blue-600 font-semibold' : 'text-gray-500'
+              className={`relative flex flex-col items-center justify-center gap-1 px-1 text-center text-[10px] font-semibold leading-tight transition ${
+                active ? 'text-[#a3ff12]' : 'text-slate-400 hover:text-white'
               }`}
             >
-              <span className="text-xl leading-none">{item.icon}</span>
+              {active && (
+                <span className="absolute top-1 h-1 w-8 rounded-full bg-[#a3ff12] shadow-[0_0_18px_rgba(163,255,18,0.8)]" />
+              )}
+              <Icon size={20} strokeWidth={2.2} />
               <span>{item.label}</span>
             </Link>
           );
         })}
         <button
           onClick={() => setMenuOpen(true)}
-          className="flex flex-col items-center justify-center text-[11px] gap-0.5 leading-tight px-1 text-center text-gray-500"
+          className="flex flex-col items-center justify-center gap-1 px-1 text-center text-[10px] font-semibold leading-tight text-slate-400 transition hover:text-white"
           aria-label="メニュー"
         >
-          <span className="text-xl leading-none">☰</span>
+          <Menu size={20} strokeWidth={2.2} />
           <span>メニュー</span>
         </button>
       </nav>
@@ -76,39 +99,46 @@ export default function BottomNav() {
       {menuOpen && (
         <>
           <div
-            className="fixed inset-0 bg-black/40 z-50"
+            className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm"
             onClick={() => setMenuOpen(false)}
           />
-          <div className="fixed bottom-0 inset-x-0 z-50 bg-white rounded-t-2xl shadow-xl pb-6 max-h-[80vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-4 pt-4 pb-2">
-              <h3 className="text-base font-semibold">メニュー</h3>
+          <div className="fixed bottom-0 inset-x-0 z-50 max-h-[82vh] overflow-y-auto rounded-t-2xl border border-white/10 bg-[#0b1018] pb-6 shadow-2xl">
+            <div className="flex items-center justify-between px-4 pb-2 pt-4">
+              <div>
+                <div className="sport-kicker">Control deck</div>
+                <h3 className="text-lg font-black">メニュー</h3>
+              </div>
               <button
                 onClick={() => setMenuOpen(false)}
-                className="text-gray-500 text-2xl leading-none px-2"
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 text-slate-300"
                 aria-label="閉じる"
               >
-                ×
+                <X size={20} />
               </button>
             </div>
-            <ul className="divide-y divide-gray-100">
-              {moreItems.map((item) => (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50"
-                  >
-                    <span className="text-2xl">{item.icon}</span>
-                    <span className="font-medium">{item.label}</span>
-                  </Link>
-                </li>
-              ))}
+            <ul className="grid grid-cols-1 gap-2 px-4 py-2">
+              {moreItems.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      onClick={() => setMenuOpen(false)}
+                      className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.035] px-3 py-3 transition hover:border-[#a3ff12]/50 hover:bg-[#a3ff12]/10"
+                    >
+                      <Icon size={20} className="text-[#a3ff12]" />
+                      <span className="font-medium">{item.label}</span>
+                    </Link>
+                  </li>
+                );
+              })}
               <li>
                 <form action={logoutAction}>
                   <button
                     type="submit"
-                    className="w-full text-left flex items-center gap-3 px-4 py-3 hover:bg-rose-50 text-rose-600"
+                    className="flex w-full items-center gap-3 rounded-lg border border-rose-400/25 bg-rose-500/10 px-3 py-3 text-left text-rose-300 transition hover:bg-rose-500/15"
                   >
-                    <span className="text-2xl">🚪</span>
+                    <LogOut size={20} />
                     <span className="font-medium">ログアウト</span>
                   </button>
                 </form>

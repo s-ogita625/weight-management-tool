@@ -68,8 +68,10 @@ export default function MealLogForm() {
   useEffect(() => {
     if (state && 'ok' in state && state.ok) {
       formRef.current?.reset();
-      resetForm();
-      router.refresh();
+      window.setTimeout(() => {
+        resetForm();
+        router.refresh();
+      }, 0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);

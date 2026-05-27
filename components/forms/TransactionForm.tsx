@@ -21,18 +21,12 @@ export default function TransactionForm() {
   const categories = kind === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
 
   useEffect(() => {
-    // 種別切り替え時、現在のカテゴリが対応リストにない場合はリセット
-    if (!(categories as readonly string[]).includes(category)) {
-      setCategory(categories[0]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind]);
-
-  useEffect(() => {
     if (state && 'ok' in state && state.ok) {
       formRef.current?.reset();
-      setDate(dateInJST());
-      router.refresh();
+      window.setTimeout(() => {
+        setDate(dateInJST());
+        router.refresh();
+      }, 0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
@@ -46,7 +40,10 @@ export default function TransactionForm() {
       <div className="grid grid-cols-2 gap-2">
         <button
           type="button"
-          onClick={() => setKind('expense')}
+          onClick={() => {
+            setKind('expense');
+            setCategory('食費');
+          }}
           className={`h-12 rounded-xl border font-medium ${
             kind === 'expense'
               ? 'bg-rose-600 text-white border-rose-600'
@@ -57,7 +54,10 @@ export default function TransactionForm() {
         </button>
         <button
           type="button"
-          onClick={() => setKind('income')}
+          onClick={() => {
+            setKind('income');
+            setCategory('給与');
+          }}
           className={`h-12 rounded-xl border font-medium ${
             kind === 'income'
               ? 'bg-emerald-600 text-white border-emerald-600'

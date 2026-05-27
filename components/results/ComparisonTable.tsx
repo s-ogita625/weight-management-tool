@@ -24,9 +24,9 @@ export default function ComparisonTable({ result }: Props) {
 
   return (
     <div className="overflow-x-auto -mx-4 px-4">
-      <table className="w-full text-sm border-collapse bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <table className="w-full overflow-hidden rounded-lg border border-white/10 bg-[#10151f] text-sm">
         <thead>
-          <tr className="bg-gray-50">
+          <tr className="bg-white/[0.045]">
             <th className="text-left p-3 font-medium text-gray-700">項目</th>
             <th
               className={`p-3 font-medium text-right ${
@@ -48,7 +48,7 @@ export default function ComparisonTable({ result }: Props) {
           {rows.map((r) => (
             <tr
               key={r.label}
-              className={`border-t border-gray-100 ${r.highlight ? 'bg-yellow-50' : ''}`}
+              className={`border-t border-white/10 ${r.highlight ? 'bg-[#a3ff12]/10' : ''}`}
             >
               <td className="p-3 text-gray-700">{r.label}</td>
               <td

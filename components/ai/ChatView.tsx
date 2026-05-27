@@ -59,18 +59,17 @@ export default function ChatView({ initial }: Props) {
       }
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      let buffer = '';
-      // eslint-disable-next-line no-constant-condition
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
-        buffer += decoder.decode(value, { stream: true });
+        const chunk = decoder.decode(value, { stream: true });
         setMessages((m) => {
           const next = [...m];
           if (next.length > 0 && next[next.length - 1].role === 'assistant') {
+            const previous = next[next.length - 1].content;
             next[next.length - 1] = {
               role: 'assistant',
-              content: buffer,
+              content: previous + chunk,
             };
           }
           return next;
