@@ -141,63 +141,115 @@ export const FATIGUE_LABELS: Record<number, string> = {
 };
 
 // =================
-// 家計簿
+// 筋トレ記録
 // =================
-export type TxKind = 'income' | 'expense';
+export type BodyPart =
+  | 'chest'
+  | 'back'
+  | 'legs'
+  | 'shoulders'
+  | 'arms'
+  | 'core'
+  | 'cardio'
+  | 'full_body'
+  | 'other';
 
-export interface Transaction {
+export type WorkoutSetType = 'warmup' | 'working' | 'drop' | 'failure';
+export type WorkoutSide = 'both' | 'left' | 'right';
+
+export interface WorkoutSet {
   id: string;
-  user_id: string;
-  date: string; // YYYY-MM-DD
-  kind: TxKind;
-  category: string;
-  amount: number;
+  exercise_id: string;
+  set_order: number;
+  weight_kg: number | null;
+  reps: number | null;
+  rpe: number | null;
+  rir: number | null;
+  set_type: WorkoutSetType;
+  side: WorkoutSide;
   memo: string | null;
   created_at?: string;
 }
 
-export const TX_KIND_LABELS: Record<TxKind, string> = {
-  income: '収入',
-  expense: '支出',
-};
+export interface WorkoutExercise {
+  id: string;
+  session_id: string;
+  exercise_order: number;
+  name: string;
+  body_part: BodyPart;
+  memo: string | null;
+  sets: WorkoutSet[];
+  created_at?: string;
+}
 
-// よく使われるカテゴリ候補
-export const INCOME_CATEGORIES = ['給与', '副業', '臨時', 'その他'] as const;
-export const EXPENSE_CATEGORIES = [
-  '食費',
-  '外食',
-  '日用品',
-  '住居',
-  '光熱費',
-  '通信',
-  '交通',
-  '医療・健康',
-  '教養娯楽',
-  '衣服',
-  'サプリ・プロテイン',
-  'ジム',
-  'サブスク',
-  '交際',
-  'その他',
-] as const;
-
-// =================
-// 固定費
-// =================
-export interface RecurringExpense {
+export interface WorkoutSession {
   id: string;
   user_id: string;
-  name: string;
-  category: string;
-  amount: number;
-  billing_day: number; // 1-31
-  purpose: string | null;
-  start_month: string; // YYYY-MM
-  end_month: string | null; // YYYY-MM, null = 無期限
-  is_active: boolean;
+  date: string; // YYYY-MM-DD
+  start_time: string | null; // HH:MM or null
+  duration_min: number | null;
+  main_body_part: BodyPart | null;
+  perceived_effort: number | null; // 1..10
+  memo: string | null;
   created_at?: string;
   updated_at?: string;
 }
+
+export interface WorkoutSessionDetail extends WorkoutSession {
+  exercises: WorkoutExercise[];
+  totalSets: number;
+  totalVolumeKg: number;
+}
+
+export interface WorkoutStats {
+  sessionsThisWeek: number;
+  sessionsThisMonth: number;
+  setsThisWeek: number;
+  setsThisMonth: number;
+  volumeThisWeekKg: number;
+  volumeThisMonthKg: number;
+  lastWorkoutDate: string | null;
+  restDays: number | null;
+  bodyPartSets: Array<{ body_part: BodyPart; sets: number; volumeKg: number }>;
+  frequentExercises: Array<{ name: string; body_part: BodyPart; count: number }>;
+}
+
+export const BODY_PART_LABELS: Record<BodyPart, string> = {
+  chest: '胸',
+  back: '背中',
+  legs: '脚',
+  shoulders: '肩',
+  arms: '腕',
+  core: '体幹',
+  cardio: '有酸素',
+  full_body: '全身',
+  other: 'その他',
+};
+
+export const BODY_PART_ICONS: Record<BodyPart, string> = {
+  chest: 'CH',
+  back: 'BK',
+  legs: 'LG',
+  shoulders: 'SH',
+  arms: 'AR',
+  core: 'CR',
+  cardio: 'CD',
+  full_body: 'FB',
+  other: 'OT',
+};
+
+export const WORKOUT_SET_TYPE_LABELS: Record<WorkoutSetType, string> = {
+  warmup: 'ウォームアップ',
+  working: 'メイン',
+  drop: 'ドロップ',
+  failure: '限界',
+};
+
+export const WORKOUT_SIDE_LABELS: Record<WorkoutSide, string> = {
+  both: '両側',
+  left: '左',
+  right: '右',
+};
 
 // =================
 // 文献リサーチ

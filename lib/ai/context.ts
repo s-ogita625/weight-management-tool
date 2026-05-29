@@ -2,6 +2,7 @@ import 'server-only';
 
 import { sql } from '@/lib/db';
 import { calculate } from '@/lib/calculations';
+import { getWorkoutSessions, getWorkoutStats } from '@/lib/workouts';
 import {
   correlation,
   daysBetween,
@@ -17,10 +18,13 @@ import {
   PERIOD_LABELS,
   QUALITY_LABELS,
   TRAINING_FREQ_LABELS,
+  BODY_PART_LABELS,
   type DailyLog,
   type HistoricalAnalysis,
   type MealLog,
   type Profile,
+  type WorkoutSessionDetail,
+  type WorkoutStats,
 } from '@/lib/types';
 
 export interface UserContext {
@@ -42,6 +46,10 @@ export interface UserContext {
   weightTrend: WeightTrend | null;
   /** 過去14-30日の深掘り分析 */
   historicalAnalysis: HistoricalAnalysis | null;
+  /** 直近30件の筋トレ記録 */
+  workoutSessions: WorkoutSessionDetail[];
+  /** 筋トレ集計 */
+  workoutStats: WorkoutStats;
 }
 
 export interface WeightTrend {
@@ -96,8 +104,14 @@ export async function buildUserContext(
   userId: string,
   daysBack = 14,
 ): Promise<UserContext> {
-  // 3 つの SQL を並列実行
-  const [profileRowsRaw, mealLogsRaw, dailyLogsRaw] = await Promise.all([
+  // 食事・朝記録・筋トレを並列取得
+  const [
+    profileRowsRaw,
+    mealLogsRaw,
+    dailyLogsRaw,
+    workoutSessions,
+    workoutStats,
+  ] = await Promise.all([
     sql`select * from profiles where user_id = ${userId} limit 1`,
     sql`
       select id, user_id, to_char(date, 'YYYY-MM-DD') as date,
@@ -119,6 +133,8 @@ export async function buildUserContext(
         and date >= current_date - (${daysBack}::int) * interval '1 day'
       order by date asc
     `,
+    getWorkoutSessions(userId, 30),
+    getWorkoutStats(userId),
   ]);
 
   const profileRows = profileRowsRaw as unknown as Profile[];
@@ -195,6 +211,8 @@ export async function buildUserContext(
       target,
       daysBack,
     ),
+    workoutSessions,
+    workoutStats,
   };
 }
 
@@ -508,6 +526,54 @@ export function formatContextForAI(ctx: UserContext): string {
     );
   }
 
+  if (ctx.workoutSessions.length > 0) {
+    const ws = ctx.workoutStats;
+    parts.push(
+      `【筋トレ記録】直近記録 ${ctx.workoutSessions.length}回 / 今週 ${ws.sessionsThisWeek}回・${ws.setsThisWeek}set・総ボリューム${ws.volumeThisWeekKg}kg / 今月 ${ws.sessionsThisMonth}回・${ws.setsThisMonth}set・総ボリューム${ws.volumeThisMonthKg}kg / 最終筋トレ: ${ws.lastWorkoutDate ?? '-'} / 休息日数: ${ws.restDays === null ? '-' : ws.restDays + '日'}`,
+    );
+
+    if (ws.bodyPartSets.length > 0) {
+      parts.push(
+        `【部位別セット数(今月)】\n${ws.bodyPartSets
+          .map(
+            (p) =>
+              `- ${BODY_PART_LABELS[p.body_part]}: ${p.sets}set / ${p.volumeKg}kg`,
+          )
+          .join('\n')}`,
+      );
+    }
+
+    parts.push(
+      `【直近の筋トレ内容(最大5回)】\n${ctx.workoutSessions
+        .slice(0, 5)
+        .map((session) => {
+          const exercises = session.exercises
+            .slice(0, 5)
+            .map((exercise) => {
+              const best = exercise.sets.reduce(
+                (acc, set) => {
+                  const weight = Number(set.weight_kg ?? 0);
+                  const reps = Number(set.reps ?? 0);
+                  const volume = weight * reps;
+                  return volume > acc.volume
+                    ? { weight, reps, volume }
+                    : acc;
+                },
+                { weight: 0, reps: 0, volume: 0 },
+              );
+              return `${exercise.name}(${exercise.sets.length}set 最大${best.weight.toFixed(1)}kg x ${best.reps}回)`;
+            })
+            .join(' / ');
+          return `- ${session.date}: ${session.totalSets}set / ${Math.round(
+            session.totalVolumeKg,
+          )}kg / ${exercises}`;
+        })
+        .join('\n')}`,
+    );
+  } else {
+    parts.push('【筋トレ記録】まだ筋トレ記録なし');
+  }
+
   const s = ctx.stats;
   parts.push(
     `【食事記録状況】過去14日: 記録日数 ${s.daysLogged}日 / 食事件数 ${s.totalLogs}件 / 連続記録 ${s.consecutiveDaysLogged}日`,
@@ -585,6 +651,8 @@ export function buildSystemPrompt(ctx: UserContext): string {
 【あなたの役割】
 - ユーザーの食事記録・身体データ・体重トレンド・コンディション(睡眠/疲労/気分/便通)を総合的に解釈し、エビデンスに基づくアドバイスを行う
 - 体重トレンド（線形回帰の予測値・週次変化）が目標に対して妥当かを評価し、必要なら摂取量や運動量の調整を具体的に提案する
+- 筋トレ記録（種目・重量・回数・セット・部位別ボリューム）から筋量維持に十分な刺激が入っているかを評価する
+- 減量中は重量維持・総セット数・疲労管理を重視し、筋肉を落とさないための現実的な調整を提案する
 - 食事タイミング（meal_type/time）から leucine threshold 達成度や運動前後の最適化を評価
 - 睡眠不足や慢性疲労、便通異常などのコンディション悪化が見られた場合は、それらが目標達成に与える影響を栄養・トレーニングの観点で言及する
 - 直近14日のスロープ・volatility・相関を考慮し、停滞期や過剰減量を見抜く

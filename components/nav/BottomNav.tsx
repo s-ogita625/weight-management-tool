@@ -3,8 +3,6 @@
 import {
   BarChart3,
   Bot,
-  CalendarDays,
-  CircleDollarSign,
   Dumbbell,
   History,
   Home,
@@ -14,6 +12,7 @@ import {
   Moon,
   Settings,
   Sparkles,
+  Sunrise,
   Utensils,
   X,
   type LucideIcon,
@@ -31,16 +30,15 @@ type NavItem = {
 
 const mainItems: NavItem[] = [
   { href: '/', label: 'ホーム', icon: Home },
-  { href: '/morning', label: '朝記録', icon: Dumbbell },
+  { href: '/morning', label: '朝記録', icon: Sunrise },
   { href: '/log', label: '食事', icon: Utensils },
-  { href: '/budget', label: '家計簿', icon: CircleDollarSign },
+  { href: '/workout', label: '筋トレ', icon: Dumbbell },
 ];
 
 const moreItems: NavItem[] = [
   { href: '/plan', label: '食事プラン', icon: BarChart3 },
   { href: '/trend', label: 'トレンド分析', icon: Sparkles },
   { href: '/history', label: '食事履歴', icon: History },
-  { href: '/budget/recurring', label: '固定費の管理', icon: CalendarDays },
   { href: '/coach', label: 'AIコーチング', icon: Bot },
   { href: '/chat', label: 'AIチャット', icon: MessageCircle },
   { href: '/research', label: '文献リサーチ', icon: Moon },

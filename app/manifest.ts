@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: '体重管理ツール',
     short_name: '食事管理',
     description:
-      '体重・体脂肪率・食事・PFC・家計を管理するボディメイク支援ツール',
+      '体重・体脂肪率・食事・PFC・筋トレを管理するボディメイク支援ツール',
     start_url: '/',
     scope: '/',
     display: 'standalone',

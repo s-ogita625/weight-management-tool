@@ -4,9 +4,9 @@ import BottomNav from '@/components/nav/BottomNav';
 import { getSessionUserId } from '@/lib/auth';
 
 export const metadata: Metadata = {
-  title: '体重管理ツール | 食事プラン計画',
+  title: '体重管理ツール | 食事・筋トレ計画',
   description:
-    '体重・体脂肪率・目標から、科学的根拠に基づいた食事プラン（カロリー・PFC）を算出します。',
+    '体重・体脂肪率・食事・筋トレ記録から、科学的根拠に基づいたボディメイク計画を支援します。',
 };
 
 export const viewport: Viewport = {

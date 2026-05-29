@@ -3,7 +3,6 @@ import { redirect } from 'next/navigation';
 import {
   BarChart3,
   Bot,
-  CircleDollarSign,
   Dumbbell,
   History,
   MessageCircle,
@@ -18,7 +17,7 @@ import { calculate } from '@/lib/calculations';
 import { dateInJST } from '@/lib/date';
 import { sql } from '@/lib/db';
 import { pickFunComparisons } from '@/lib/fun-foods';
-import { getRecurringMonthlyTotal } from '@/lib/recurring';
+import { getWorkoutStats } from '@/lib/workouts';
 import type { DailyLog, MealLog, Profile } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -39,7 +38,7 @@ export default async function Home() {
             体重管理ツール
           </h1>
           <p className="mt-3 text-sm leading-relaxed text-slate-300">
-            身体データと目標から、食事プラン、PFC、体重推移、AIコーチング、食費までまとめて管理します。
+            身体データと目標から、食事プラン、PFC、体重推移、筋トレ記録、AIコーチングまでまとめて管理します。
           </p>
         </div>
 
@@ -48,7 +47,7 @@ export default async function Home() {
           <FeatureTile icon={Utensils} label="食事ごと記録" />
           <FeatureTile icon={TrendingUp} label="推移分析" />
           <FeatureTile icon={Bot} label="AIコーチ" />
-          <FeatureTile icon={CircleDollarSign} label="食費管理" />
+          <FeatureTile icon={Dumbbell} label="筋トレ記録" />
           <FeatureTile icon={Zap} label="リーンカット" />
         </div>
 
@@ -71,11 +70,9 @@ export default async function Home() {
   }
 
   const today = dateInJST();
-  const ym = today.slice(0, 7);
-  const start = `${ym}-01`;
 
-  // 5 つのデータ取得をすべて並列実行（neon HTTP は 1 SQL = 1 リクエストなので並列化が効く）
-  const [profileRowsRaw, morningRowsRaw, mealRowsRaw, txTotalsRowsRaw, recurringTotal] =
+  // 4 つのデータ取得を並列実行（neon HTTP は 1 SQL = 1 リクエストなので並列化が効く）
+  const [profileRowsRaw, morningRowsRaw, mealRowsRaw, workoutStats] =
     await Promise.all([
       sql`select * from profiles where user_id = ${userId} limit 1`,
       sql`
@@ -90,13 +87,7 @@ export default async function Home() {
         from meal_logs
         where user_id = ${userId} and date = ${today}
       `,
-      sql`
-        select kind, coalesce(sum(amount),0)::float as total
-        from transactions
-        where user_id = ${userId} and date >= ${start}
-        group by kind
-      `,
-      getRecurringMonthlyTotal(userId, ym),
+      getWorkoutStats(userId),
     ]);
 
   const profileRows = profileRowsRaw as unknown as Profile[];
@@ -150,14 +141,6 @@ export default async function Home() {
     1,
     todaySeed,
   );
-
-  const txTotalsRows = txTotalsRowsRaw as unknown as Array<{
-    kind: 'income' | 'expense';
-    total: number;
-  }>;
-  const income = txTotalsRows.find((r) => r.kind === 'income')?.total ?? 0;
-  const expenseTx = txTotalsRows.find((r) => r.kind === 'expense')?.total ?? 0;
-  const expense = expenseTx + recurringTotal;
 
   return (
     <div className="space-y-5 py-4">
@@ -261,33 +244,29 @@ export default async function Home() {
         </div>
       </ShortcutCard>
 
-      {/* 家計サマリー */}
+      {/* 筋トレサマリー */}
       <ShortcutCard
-        href="/budget"
-        title={`今月（${ym}）の家計`}
-        icon={CircleDollarSign}
+        href="/workout"
+        title="筋トレを記録"
+        icon={Dumbbell}
       >
         <div className="grid grid-cols-3 gap-2 text-xs">
           <div>
-            <div className="text-gray-500">収入</div>
-            <div className="font-semibold tabular-nums text-emerald-600">
-              ¥{income.toLocaleString()}
+            <div className="text-gray-500">今週</div>
+            <div className="font-semibold tabular-nums text-[#a3ff12]">
+              {workoutStats.sessionsThisWeek}回
             </div>
           </div>
           <div>
-            <div className="text-gray-500">支出</div>
-            <div className="font-semibold tabular-nums text-rose-600">
-              ¥{expense.toLocaleString()}
+            <div className="text-gray-500">セット</div>
+            <div className="font-semibold tabular-nums text-[#20e0ff]">
+              {workoutStats.setsThisWeek}set
             </div>
           </div>
           <div>
-            <div className="text-gray-500">収支</div>
-            <div
-              className={`font-semibold tabular-nums ${
-                income - expense >= 0 ? 'text-emerald-600' : 'text-rose-600'
-              }`}
-            >
-              ¥{(income - expense).toLocaleString()}
+            <div className="text-gray-500">休息</div>
+            <div className="font-semibold tabular-nums text-slate-200">
+              {workoutStats.restDays === null ? '-' : `${workoutStats.restDays}日`}
             </div>
           </div>
         </div>
@@ -301,6 +280,7 @@ export default async function Home() {
         <div className="grid grid-cols-2 gap-2">
           <QuickLink href="/plan" icon={BarChart3} label="食事プラン" />
           <QuickLink href="/trend" icon={TrendingUp} label="トレンド分析" />
+          <QuickLink href="/workout" icon={Dumbbell} label="筋トレメモ" />
           <QuickLink href="/history" icon={History} label="食事履歴" />
           <QuickLink href="/coach" icon={Bot} label="AIコーチング" />
           <QuickLink href="/chat" icon={MessageCircle} label="AIチャット" />

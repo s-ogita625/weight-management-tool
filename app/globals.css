@@ -286,6 +286,26 @@ a[aria-disabled="true"] {
   border-radius: 8px;
 }
 
+.sport-input {
+  width: 100%;
+  min-height: 3rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.28);
+  color: var(--foreground);
+  padding: 0 0.75rem;
+  outline: none;
+}
+
+.sport-input:focus {
+  border-color: rgba(163, 255, 18, 0.72);
+  box-shadow: 0 0 0 3px rgba(163, 255, 18, 0.1);
+}
+
+.sport-input::placeholder {
+  color: rgba(148, 163, 184, 0.72);
+}
+
 .sport-grid-line {
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
