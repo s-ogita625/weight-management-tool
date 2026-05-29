@@ -51,6 +51,12 @@ type ExerciseInput = {
   sets: SetInput[];
 };
 
+type WorkoutTemplate = {
+  key: string;
+  label: string;
+  session: WorkoutSessionDetail;
+};
+
 interface Props {
   sessions: WorkoutSessionDetail[];
   stats: WorkoutStats;
@@ -59,6 +65,18 @@ interface Props {
 const BODY_PARTS = Object.keys(BODY_PART_LABELS) as BodyPart[];
 const SET_TYPES = Object.keys(WORKOUT_SET_TYPE_LABELS) as WorkoutSetType[];
 const SIDES = Object.keys(WORKOUT_SIDE_LABELS) as WorkoutSide[];
+const SPLIT_ORDER: BodyPart[] = [
+  'chest',
+  'triceps',
+  'back',
+  'arms',
+  'shoulders',
+  'legs',
+  'core',
+  'cardio',
+  'full_body',
+  'other',
+];
 
 const DEFAULT_EXERCISE: ExerciseInput = {
   name: '',
@@ -99,8 +117,8 @@ export default function WorkoutView({ sessions, stats }: Props) {
     structuredClone(DEFAULT_EXERCISE),
   ]);
 
-  const lastSession = sessions[0] ?? null;
   const frequent = stats.frequentExercises;
+  const templates = useMemo(() => buildSplitTemplates(sessions), [sessions]);
 
   useEffect(() => {
     if (state && 'ok' in state && state.ok) {
@@ -147,16 +165,16 @@ export default function WorkoutView({ sessions, stats }: Props) {
     0,
   );
 
-  const copyLastSession = () => {
-    if (!lastSession) return;
-    setMainBodyPart(lastSession.main_body_part ?? 'chest');
+  const copySessionTemplate = (template: WorkoutTemplate) => {
+    const source = template.session;
+    setMainBodyPart(source.main_body_part ?? source.exercises[0]?.body_part ?? 'chest');
     setDurationMin(
-      lastSession.duration_min ? String(lastSession.duration_min) : '',
+      source.duration_min ? String(source.duration_min) : '',
     );
-    setMemo(lastSession.memo ?? '');
+    setMemo(`${template.label}を${source.date}の最新メニューからコピー`);
     setExercises(
-      lastSession.exercises.length > 0
-        ? lastSession.exercises.map((exercise) => ({
+      source.exercises.length > 0
+        ? source.exercises.map((exercise) => ({
             name: exercise.name,
             body_part: exercise.body_part,
             memo: exercise.memo ?? '',
@@ -312,23 +330,45 @@ export default function WorkoutView({ sessions, stats }: Props) {
 
       {tab === 'record' && (
         <div className="space-y-4">
-          {lastSession && (
-            <button
-              type="button"
-              onClick={copyLastSession}
-              className="sport-card flex w-full items-center justify-between gap-3 p-4 text-left active:scale-[0.99]"
-            >
-              <span>
-                <span className="block text-sm font-black text-white">
-                  前回メニューをコピー
-                </span>
-                <span className="mt-1 block text-xs text-slate-400">
-                  {lastSession.date} / {lastSession.exercises.length}種目 /{' '}
-                  {lastSession.totalSets}set
-                </span>
-              </span>
-              <Copy size={20} className="text-[#a3ff12]" />
-            </button>
+          {templates.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-bold text-slate-200">
+                    最新の部位メニューをコピー
+                  </div>
+                  <div className="mt-0.5 text-xs text-slate-500">
+                    胸+三頭、背中+二頭などの最新記録を反映します
+                  </div>
+                </div>
+                <Copy size={18} className="shrink-0 text-[#a3ff12]" />
+              </div>
+              <div className="grid grid-cols-1 gap-2">
+                {templates.map((template) => (
+                  <button
+                    key={template.key}
+                    type="button"
+                    onClick={() => copySessionTemplate(template)}
+                    className="sport-card flex w-full items-center justify-between gap-3 p-4 text-left active:scale-[0.99]"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-black text-white">
+                        {template.label}
+                      </span>
+                      <span className="mt-1 block text-xs text-slate-400">
+                        {template.session.date} /{' '}
+                        {template.session.exercises.length}種目 /{' '}
+                        {template.session.totalSets}set /{' '}
+                        {compactNumber(template.session.totalVolumeKg)}kg
+                      </span>
+                    </span>
+                    <span className="rounded-full border border-[#a3ff12]/30 px-3 py-1 text-xs font-black text-[#a3ff12]">
+                      反映
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
 
           {frequent.length > 0 && (
@@ -467,7 +507,7 @@ export default function WorkoutView({ sessions, stats }: Props) {
       )}
 
       {tab === 'history' && (
-        <HistoryList sessions={sessions} />
+        <HistoryList sessions={sessions.slice(0, 30)} />
       )}
 
       {tab === 'analysis' && (
@@ -592,6 +632,46 @@ function WorkoutMetaFields({
       </Field>
     </div>
   );
+}
+
+function buildSplitTemplates(
+  sessions: WorkoutSessionDetail[],
+): WorkoutTemplate[] {
+  const templates = new Map<string, WorkoutTemplate>();
+
+  for (const session of sessions) {
+    const parts = Array.from(
+      new Set(session.exercises.map((exercise) => exercise.body_part)),
+    ).sort((a, b) => SPLIT_ORDER.indexOf(a) - SPLIT_ORDER.indexOf(b));
+    if (parts.length === 0) continue;
+
+    const key = parts.join('|');
+    if (!templates.has(key)) {
+      templates.set(key, {
+        key,
+        label: splitLabel(parts),
+        session,
+      });
+    }
+  }
+
+  return Array.from(templates.values()).slice(0, 8);
+}
+
+function splitLabel(parts: BodyPart[]): string {
+  const has = (part: BodyPart) => parts.includes(part);
+  if (has('chest') && has('triceps')) return '胸 + 三頭';
+  if (has('back') && has('arms')) return '背中 + 二頭・前腕';
+  if (has('shoulders') && has('arms')) return '肩 + 二頭・前腕';
+  if (has('shoulders') && has('triceps')) return '肩 + 三頭';
+  if (has('legs')) return '脚';
+  if (has('core')) return '腹筋';
+  if (has('chest')) return has('arms') ? '胸 + 腕' : '胸';
+  if (has('back')) return '背中';
+  if (has('shoulders')) return '肩';
+  if (has('triceps')) return '三頭';
+  if (has('arms')) return '二頭・前腕';
+  return parts.map((part) => BODY_PART_LABELS[part]).join(' + ');
 }
 
 function ExerciseCard({

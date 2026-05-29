@@ -11,7 +11,7 @@ export default async function WorkoutPage() {
   if (!userId) redirect('/login');
 
   const [sessions, stats] = await Promise.all([
-    getWorkoutSessions(userId, 30),
+    getWorkoutSessions(userId, 120),
     getWorkoutStats(userId),
   ]);
 
