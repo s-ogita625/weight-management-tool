@@ -12,6 +12,7 @@ const BODY_PARTS = new Set<BodyPart>([
   'legs',
   'shoulders',
   'arms',
+  'triceps',
   'core',
   'cardio',
   'full_body',

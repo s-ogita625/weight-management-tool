@@ -12,7 +12,7 @@ create table if not exists workout_sessions (
   duration_min int check (duration_min is null or duration_min between 1 and 600),
   main_body_part text check (
     main_body_part is null or main_body_part in (
-      'chest','back','legs','shoulders','arms','core','cardio','full_body','other'
+      'chest','back','legs','shoulders','arms','triceps','core','cardio','full_body','other'
     )
   ),
   perceived_effort smallint check (
@@ -33,7 +33,7 @@ create table if not exists workout_exercises (
   name text not null check (length(name) <= 80),
   body_part text not null check (
     body_part in (
-      'chest','back','legs','shoulders','arms','core','cardio','full_body','other'
+      'chest','back','legs','shoulders','arms','triceps','core','cardio','full_body','other'
     )
   ),
   memo text,
@@ -70,7 +70,7 @@ create table if not exists workout_routines (
   name text not null check (length(name) <= 80),
   main_body_part text check (
     main_body_part is null or main_body_part in (
-      'chest','back','legs','shoulders','arms','core','cardio','full_body','other'
+      'chest','back','legs','shoulders','arms','triceps','core','cardio','full_body','other'
     )
   ),
   memo text,
@@ -88,7 +88,7 @@ create table if not exists workout_routine_exercises (
   name text not null check (length(name) <= 80),
   body_part text not null check (
     body_part in (
-      'chest','back','legs','shoulders','arms','core','cardio','full_body','other'
+      'chest','back','legs','shoulders','arms','triceps','core','cardio','full_body','other'
     )
   ),
   target_sets int check (target_sets is null or target_sets between 1 and 30),

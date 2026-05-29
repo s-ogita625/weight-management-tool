@@ -149,6 +149,7 @@ export type BodyPart =
   | 'legs'
   | 'shoulders'
   | 'arms'
+  | 'triceps'
   | 'core'
   | 'cardio'
   | 'full_body'
@@ -220,6 +221,7 @@ export const BODY_PART_LABELS: Record<BodyPart, string> = {
   legs: '脚',
   shoulders: '肩',
   arms: '腕',
+  triceps: '三頭',
   core: '体幹',
   cardio: '有酸素',
   full_body: '全身',
@@ -232,6 +234,7 @@ export const BODY_PART_ICONS: Record<BodyPart, string> = {
   legs: 'LG',
   shoulders: 'SH',
   arms: 'AR',
+  triceps: 'TR',
   core: 'CR',
   cardio: 'CD',
   full_body: 'FB',
