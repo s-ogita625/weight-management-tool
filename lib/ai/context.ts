@@ -492,7 +492,11 @@ export function formatContextForAI(ctx: UserContext): string {
   if (ctx.cheatDayPlan?.enabled) {
     const c = ctx.cheatDayPlan;
     parts.push(
-      `【チートデイ/リフィード】${c.frequencyLabel} / 次回目安 ${c.nextDate ?? '-'} / 誕生日枠 ${c.birthdayWindow ?? '-'} / リフィード目標 ${c.calories}kcal / P${c.protein_g}g F${c.fat_g}g C${c.carbs_g}g`,
+      `【チートデイ/リフィード】${c.frequencyLabel} / 次回目安 ${c.nextDate ?? '-'} / 誕生日枠 ${c.birthdayWindow ?? '-'} / ${
+        c.isBirthdayFreeDay
+          ? '今日は誕生日フリーデイ（カロリー・PFC制限なし）'
+          : `通常リフィード目標 ${c.calories}kcal / P${c.protein_g}g F${c.fat_g}g C${c.carbs_g}g`
+      }`,
     );
   }
 

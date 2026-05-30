@@ -255,7 +255,7 @@ export default function ProfileForm({ initial }: Props) {
             </div>
             <div className="text-xs text-gray-600 mt-1 leading-relaxed">
               暴食日ではなく、筋トレ出力と継続性を守る高炭水化物リフィードとして計画します。
-              誕生日は6/25基準でイベント食事枠にできます。
+              誕生日当日は例外として、カロリーやPFCを気にせず楽しむフリーデイにします。
             </div>
           </div>
           <button

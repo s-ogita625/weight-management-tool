@@ -231,7 +231,7 @@ export default function PlanView({ profile }: Props) {
           <div>
             <h2 className="font-semibold">{cheatDayPlan.title}</h2>
             <p className="mt-1 text-xs leading-relaxed text-gray-600">
-              減量中は「好きなだけ食べる日」ではなく、維持カロリー付近まで炭水化物を増やす日として扱います。
+              通常は維持カロリー付近まで炭水化物を増やす日として扱います。誕生日当日は例外で、好きなものを楽しむフリーデイです。
             </p>
           </div>
           <span
@@ -293,6 +293,11 @@ export default function PlanView({ profile }: Props) {
                 </div>
               </div>
             </div>
+            <ul className="mt-3 list-disc list-inside space-y-1 text-xs leading-relaxed text-gray-600">
+              {cheatDayPlan.advice.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
           </>
         )}
       </div>

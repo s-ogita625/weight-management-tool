@@ -17,6 +17,7 @@ export interface CheatDayPlan {
   title: string;
   advice: string[];
   isTodayCheatDay: boolean;
+  isBirthdayFreeDay: boolean;
 }
 
 function round(v: number): number {
@@ -163,8 +164,27 @@ export function buildCheatDayPlan(profile: Profile, today = new Date()): CheatDa
   const birthdayStart = addDays(birthday, -1);
   const birthdayEnd = addDays(birthday, 1);
   const todayISO = toISODate(today);
+  const birthdayISO = toISODate(birthday);
+  const isBirthdayFreeDay = enabled && todayISO === birthdayISO;
   const isBirthdayWindow = today >= birthdayStart && today <= birthdayEnd;
   const isIntervalDay = frequency.intervalDays ? todayISO === toISODate(nextDate) : false;
+  const isCut = recommended.goal === 'cut';
+  const advice = isBirthdayFreeDay
+    ? [
+        '誕生日当日はフリーデイです。カロリーやPFCの上限を気にせず、食べたいものを楽しんでください。',
+        '記録は「振り返り用」として残すだけでOKです。翌日から通常の目標に戻します。',
+        'できれば水分と睡眠だけは確保し、翌日に極端な帳尻合わせはしないでください。',
+      ]
+    : isCut
+      ? [
+          '通常のチートデイはメンテナンス付近まで。誕生日当日だけは例外としてフリーデイ扱いです。',
+          'タンパク質は通常日と同じ量を確保し、脂質を増やしすぎず炭水化物を中心に増やします。',
+          '停滞・疲労・筋トレ出力低下が強い場合は、1日リフィードより3〜7日のダイエットブレイクを優先します。',
+        ]
+      : [
+          '維持・増量中は定期チートを増やす必要は低めです。イベント日に食事を楽しむ設定として扱います。',
+          '翌日以降に帳尻を極端に削らず、週平均のカロリーで調整します。',
+        ];
 
   return {
     enabled,
@@ -174,25 +194,18 @@ export function buildCheatDayPlan(profile: Profile, today = new Date()): CheatDa
     intervalDays: frequency.intervalDays,
     nextDate: enabled ? toISODate(nextDate) : null,
     birthdayDate: enabled ? toISODate(birthday) : null,
-    birthdayWindow: enabled
-      ? `${toISODate(birthdayStart)}〜${toISODate(birthdayEnd)}のうち1日`
-      : null,
+    birthdayWindow: enabled ? `${birthdayISO} 当日（フリーデイ）` : null,
     calories: round(refeedCalories),
     protein_g: round(protein_g),
     fat_g,
     carbs_g,
-    title: recommended.goal === 'cut' ? 'チートデイ（リフィード）' : 'イベント食事枠',
-    advice:
-      recommended.goal === 'cut'
-        ? [
-            '摂取カロリーは原則メンテナンスまで。誕生日などのイベント日は最大でもメンテナンス+10%を1日だけに留めます。',
-            'タンパク質は通常日と同じ量を確保し、脂質を増やしすぎず炭水化物を中心に増やします。',
-            '停滞・疲労・筋トレ出力低下が強い場合は、1日リフィードより3〜7日のダイエットブレイクを優先します。',
-          ]
-        : [
-            '維持・増量中は定期チートを増やす必要は低めです。イベント日に食事を楽しむ設定として扱います。',
-            '翌日以降に帳尻を極端に削らず、週平均のカロリーで調整します。',
-          ],
+    title: isBirthdayFreeDay
+      ? '誕生日フリーデイ'
+      : recommended.goal === 'cut'
+        ? 'チートデイ（リフィード）'
+        : 'イベント食事枠',
+    advice,
     isTodayCheatDay: enabled && (isBirthdayWindow || isIntervalDay),
+    isBirthdayFreeDay,
   };
 }

@@ -137,11 +137,13 @@ export default async function Home() {
         carbs_g: cheatDayPlan.carbs_g,
       }
     : dailyPlan;
-  const remainingKcal = Math.max(
-    0,
-    targetPlan.targetCalories - mealTotal.calories,
-  );
-  const overKcal = Math.max(0, mealTotal.calories - targetPlan.targetCalories);
+  const isBirthdayFreeDay = cheatDayPlan.isBirthdayFreeDay;
+  const remainingKcal = isBirthdayFreeDay
+    ? 0
+    : Math.max(0, targetPlan.targetCalories - mealTotal.calories);
+  const overKcal = isBirthdayFreeDay
+    ? 0
+    : Math.max(0, mealTotal.calories - targetPlan.targetCalories);
   // ホームでは1日固定 seed で1つだけ食材例を表示（軽量）
   const todaySeed =
     new Date().getFullYear() * 10000 +
@@ -170,8 +172,18 @@ export default async function Home() {
         </div>
         <div className="mt-5 grid grid-cols-3 gap-2 text-center">
           <HeroMetric label="摂取" value={Math.round(mealTotal.calories).toLocaleString()} unit="kcal" />
-          <HeroMetric label="目標" value={Math.round(targetPlan.targetCalories).toLocaleString()} unit="kcal" />
-          <HeroMetric label="残り" value={Math.round(overKcal > 0 ? overKcal : remainingKcal).toLocaleString()} unit="kcal" tone={overKcal > 0 ? 'danger' : 'success'} />
+          <HeroMetric
+            label="目標"
+            value={isBirthdayFreeDay ? 'FREE' : Math.round(targetPlan.targetCalories).toLocaleString()}
+            unit={isBirthdayFreeDay ? 'birthday' : 'kcal'}
+            tone={isBirthdayFreeDay ? 'success' : 'neutral'}
+          />
+          <HeroMetric
+            label={isBirthdayFreeDay ? '今日は' : '残り'}
+            value={isBirthdayFreeDay ? 'ENJOY' : Math.round(overKcal > 0 ? overKcal : remainingKcal).toLocaleString()}
+            unit={isBirthdayFreeDay ? 'no limit' : 'kcal'}
+            tone={overKcal > 0 ? 'danger' : 'success'}
+          />
         </div>
       </div>
 
@@ -230,9 +242,9 @@ export default async function Home() {
             </span>
           </div>
           <div className="text-xs text-gray-600">
-            P{Math.round(mealTotal.protein_g)}/{Math.round(targetPlan.protein_g)} F
-            {Math.round(mealTotal.fat_g)}/{Math.round(targetPlan.fat_g)} C
-            {Math.round(mealTotal.carbs_g)}/{Math.round(targetPlan.carbs_g)}
+            {isBirthdayFreeDay
+              ? `P${Math.round(mealTotal.protein_g)} F${Math.round(mealTotal.fat_g)} C${Math.round(mealTotal.carbs_g)}（今日は目標判定なし）`
+              : `P${Math.round(mealTotal.protein_g)}/${Math.round(targetPlan.protein_g)} F${Math.round(mealTotal.fat_g)}/${Math.round(targetPlan.fat_g)} C${Math.round(mealTotal.carbs_g)}/${Math.round(targetPlan.carbs_g)}`}
           </div>
           <div
             className={`mt-1.5 text-xs font-medium ${
@@ -243,10 +255,12 @@ export default async function Home() {
                   : 'text-emerald-600'
             }`}
           >
-            {overKcal > 0
+            {isBirthdayFreeDay
+              ? '🎂 誕生日フリーデイ。今日は好きなものを楽しむ日です'
+              : overKcal > 0
               ? `🚨 ${Math.round(overKcal)}kcal オーバー`
               : `🔥 残り ${Math.round(remainingKcal)}kcal`}
-            {funExamples.length > 0 && remainingKcal > 0 && overKcal === 0 && (
+            {funExamples.length > 0 && remainingKcal > 0 && overKcal === 0 && !isBirthdayFreeDay && (
               <span className="text-gray-500 font-normal ml-1">
                 = {funExamples[0].display}
               </span>

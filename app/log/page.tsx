@@ -3,7 +3,7 @@ import MealLogForm from '@/components/forms/MealLogForm';
 import TodayMealList from '@/components/forms/TodayMealList';
 import RemainingCalories from '@/components/log/RemainingCalories';
 import { calculate } from '@/lib/calculations';
-import { buildCheatDayPlan } from '@/lib/cheat-day';
+import { buildCheatDayPlan, type CheatDayPlan } from '@/lib/cheat-day';
 import { getSessionUserId } from '@/lib/auth';
 import { dateInJST } from '@/lib/date';
 import { sql } from '@/lib/db';
@@ -57,6 +57,7 @@ export default async function LogPage() {
     fat_g: number;
     carbs_g: number;
   } | null = null;
+  let cheatDayPlan: CheatDayPlan | null = null;
   if (profileRows[0]) {
     const p = profileRows[0];
     const result = calculate({
@@ -77,8 +78,10 @@ export default async function LogPage() {
       result.recommendedFormula === 'katchMcArdle'
         ? result.katchMcArdle
         : result.mifflin;
-    const cheatDayPlan = buildCheatDayPlan(p);
-    target = cheatDayPlan.isTodayCheatDay
+    cheatDayPlan = buildCheatDayPlan(p);
+    target = cheatDayPlan.isBirthdayFreeDay
+      ? null
+      : cheatDayPlan.isTodayCheatDay
       ? {
           calories: cheatDayPlan.calories,
           protein_g: cheatDayPlan.protein_g,
@@ -148,6 +151,11 @@ export default async function LogPage() {
             tone="carbs"
           />
         </div>
+        {cheatDayPlan?.isBirthdayFreeDay && (
+          <div className="mt-3 rounded-xl border border-[#a3ff12]/30 bg-[#a3ff12]/10 px-3 py-2 text-xs font-semibold text-[#a3ff12]">
+            今日は誕生日フリーデイです。残りカロリーやPFC達成率は気にせず、食べたいものを楽しんでください。
+          </div>
+        )}
       </div>
 
       {/* 残りカロリー + 面白い食材換算 */}
