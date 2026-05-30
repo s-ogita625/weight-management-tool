@@ -3,6 +3,7 @@
 import {
   BarChart3,
   Bot,
+  CalendarDays,
   Dumbbell,
   History,
   Home,
@@ -37,6 +38,7 @@ const mainItems: NavItem[] = [
 
 const moreItems: NavItem[] = [
   { href: '/plan', label: '食事プラン', icon: BarChart3 },
+  { href: '/calendar', label: '記録カレンダー', icon: CalendarDays },
   { href: '/trend', label: 'トレンド分析', icon: Sparkles },
   { href: '/history', label: '食事履歴', icon: History },
   { href: '/coach', label: 'AIコーチング', icon: Bot },

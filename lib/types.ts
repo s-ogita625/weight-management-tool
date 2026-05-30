@@ -1,6 +1,12 @@
 export type Gender = 'male' | 'female';
 export type TrainingFreq = 'none' | '1-2' | '3-4' | '5+';
 export type Period = '1mo' | '3mo' | '6mo' | '1yr';
+export type CheatDayFrequency =
+  | 'auto'
+  | 'weekly'
+  | 'biweekly'
+  | 'monthly'
+  | 'event_only';
 export type MealType =
   | 'breakfast'
   | 'lunch'
@@ -24,6 +30,9 @@ export interface Profile {
   target_period: Period;
   lean_cut_mode?: boolean;
   priority?: Priority;
+  cheat_day_enabled?: boolean;
+  cheat_day_frequency?: CheatDayFrequency;
+  birthday_mmdd?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -32,6 +41,14 @@ export const PRIORITY_LABELS: Record<Priority, string> = {
   fat_loss: '体脂肪優先',
   muscle_retention: '筋肉維持優先',
   recomposition: '同時達成（リコンプ）',
+};
+
+export const CHEAT_DAY_FREQUENCY_LABELS: Record<CheatDayFrequency, string> = {
+  auto: '自動（推奨）',
+  weekly: '週1回',
+  biweekly: '2週間に1回',
+  monthly: '月1回',
+  event_only: 'イベント時のみ',
 };
 
 export interface MealLog {

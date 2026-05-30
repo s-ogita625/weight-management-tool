@@ -2,6 +2,7 @@ import 'server-only';
 
 import { sql } from '@/lib/db';
 import { calculate } from '@/lib/calculations';
+import { buildCheatDayPlan, type CheatDayPlan } from '@/lib/cheat-day';
 import { getWorkoutSessions, getWorkoutStats } from '@/lib/workouts';
 import {
   correlation,
@@ -50,6 +51,8 @@ export interface UserContext {
   workoutSessions: WorkoutSessionDetail[];
   /** 筋トレ集計 */
   workoutStats: WorkoutStats;
+  /** チートデイ/リフィード計画 */
+  cheatDayPlan: CheatDayPlan | null;
 }
 
 export interface WeightTrend {
@@ -143,6 +146,7 @@ export async function buildUserContext(
   const dailyLogs = dailyLogsRaw as unknown as DailyLog[];
 
   let target: UserContext['target'] = null;
+  let cheatDayPlan: CheatDayPlan | null = null;
   if (profile) {
     const r = calculate({
       heightCm: Number(profile.height_cm),
@@ -167,6 +171,7 @@ export async function buildUserContext(
       weeklyDeltaKg: rec.weeklyDeltaKg,
       goal: rec.goal,
     };
+    cheatDayPlan = buildCheatDayPlan(profile);
   }
 
   // 日別集計
@@ -213,6 +218,7 @@ export async function buildUserContext(
     ),
     workoutSessions,
     workoutStats,
+    cheatDayPlan,
   };
 }
 
@@ -480,6 +486,13 @@ export function formatContextForAI(ctx: UserContext): string {
       t.goal === 'cut' ? '減量' : t.goal === 'bulk' ? '増量' : '維持';
     parts.push(
       `【推奨1日摂取量】${t.calories}kcal（${goalJa}フェーズ・週次変化目標 ${t.weeklyDeltaKg}kg/週） / P${t.protein_g}g / F${t.fat_g}g / C${t.carbs_g}g`,
+    );
+  }
+
+  if (ctx.cheatDayPlan?.enabled) {
+    const c = ctx.cheatDayPlan;
+    parts.push(
+      `【チートデイ/リフィード】${c.frequencyLabel} / 次回目安 ${c.nextDate ?? '-'} / 誕生日枠 ${c.birthdayWindow ?? '-'} / リフィード目標 ${c.calories}kcal / P${c.protein_g}g F${c.fat_g}g C${c.carbs_g}g`,
     );
   }
 

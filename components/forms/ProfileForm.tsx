@@ -3,10 +3,12 @@
 import { useActionState, useState } from 'react';
 import { saveProfileAction } from '@/app/actions/profile';
 import {
+  CHEAT_DAY_FREQUENCY_LABELS,
   GENDER_LABELS,
   PERIOD_LABELS,
   PRIORITY_LABELS,
   TRAINING_FREQ_LABELS,
+  type CheatDayFrequency,
   type Gender,
   type Period,
   type Priority,
@@ -20,6 +22,7 @@ interface Props {
 
 export default function ProfileForm({ initial }: Props) {
   const [state, formAction, pending] = useActionState(saveProfileAction, null);
+  const birthdayParts = (initial?.birthday_mmdd ?? '06-25').split('-');
 
   const [age, setAge] = useState<number>(initial ? Number(initial.age) : 30);
   const [gender, setGender] = useState<Gender>(initial?.gender ?? 'male');
@@ -48,6 +51,20 @@ export default function ProfileForm({ initial }: Props) {
   const [priority, setPriority] = useState<Priority>(
     initial?.priority ?? 'fat_loss',
   );
+  const [cheatDayEnabled, setCheatDayEnabled] = useState<boolean>(
+    initial?.cheat_day_enabled ?? true,
+  );
+  const [cheatDayFrequency, setCheatDayFrequency] =
+    useState<CheatDayFrequency>(initial?.cheat_day_frequency ?? 'auto');
+  const [birthdayMonth, setBirthdayMonth] = useState<number>(
+    Number(birthdayParts[0]) || 6,
+  );
+  const [birthdayDay, setBirthdayDay] = useState<number>(
+    Number(birthdayParts[1]) || 25,
+  );
+  const birthdayMmdd = `${String(birthdayMonth).padStart(2, '0')}-${String(
+    birthdayDay,
+  ).padStart(2, '0')}`;
 
   return (
     <form action={formAction} className="space-y-5">
@@ -60,6 +77,13 @@ export default function ProfileForm({ initial }: Props) {
         value={leanCutMode ? 'on' : 'off'}
       />
       <input type="hidden" name="priority" value={priority} />
+      <input
+        type="hidden"
+        name="cheat_day_enabled"
+        value={cheatDayEnabled ? 'on' : 'off'}
+      />
+      <input type="hidden" name="cheat_day_frequency" value={cheatDayFrequency} />
+      <input type="hidden" name="birthday_mmdd" value={birthdayMmdd} />
 
       {/* 性別 */}
       <div>
@@ -219,6 +243,83 @@ export default function ProfileForm({ initial }: Props) {
               }`}
             />
           </button>
+        </div>
+      </div>
+
+      {/* チートデイ / リフィード */}
+      <div className="bg-emerald-400/10 border border-emerald-300/25 rounded-xl p-4 space-y-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold text-gray-900">
+              チートデイ / リフィード設定
+            </div>
+            <div className="text-xs text-gray-600 mt-1 leading-relaxed">
+              暴食日ではなく、筋トレ出力と継続性を守る高炭水化物リフィードとして計画します。
+              誕生日は6/25基準でイベント食事枠にできます。
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setCheatDayEnabled(!cheatDayEnabled)}
+            className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors ${
+              cheatDayEnabled ? 'bg-emerald-500' : 'bg-gray-300'
+            }`}
+            aria-pressed={cheatDayEnabled}
+            aria-label="チートデイ設定切替"
+          >
+            <span
+              className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                cheatDayEnabled ? 'translate-x-6' : 'translate-x-1'
+              }`}
+            />
+          </button>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-2">頻度</label>
+          <div className="grid grid-cols-2 gap-2">
+            {(Object.keys(CHEAT_DAY_FREQUENCY_LABELS) as CheatDayFrequency[]).map(
+              (f) => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => setCheatDayFrequency(f)}
+                  disabled={!cheatDayEnabled}
+                  className={`min-h-11 rounded-xl border px-2 text-xs font-medium ${
+                    cheatDayEnabled && cheatDayFrequency === f
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white border-gray-300 text-gray-700 disabled:opacity-50'
+                  }`}
+                >
+                  {CHEAT_DAY_FREQUENCY_LABELS[f]}
+                </button>
+              ),
+            )}
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-2">
+            誕生日（イベント食事枠）
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <NumberField
+              label="月"
+              name="birthday_month_display"
+              value={birthdayMonth}
+              onChange={setBirthdayMonth}
+              min={1}
+              max={12}
+            />
+            <NumberField
+              label="日"
+              name="birthday_day_display"
+              value={birthdayDay}
+              onChange={setBirthdayDay}
+              min={1}
+              max={31}
+            />
+          </div>
         </div>
       </div>
 

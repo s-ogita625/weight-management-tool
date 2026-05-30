@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import {
   BarChart3,
   Bot,
+  CalendarDays,
   Dumbbell,
   History,
   MessageCircle,
@@ -14,6 +15,7 @@ import {
 } from 'lucide-react';
 import { getSessionUserId } from '@/lib/auth';
 import { calculate } from '@/lib/calculations';
+import { buildCheatDayPlan } from '@/lib/cheat-day';
 import { dateInJST } from '@/lib/date';
 import { sql } from '@/lib/db';
 import { pickFunComparisons } from '@/lib/fun-foods';
@@ -126,11 +128,20 @@ export default async function Home() {
     calcResult.recommendedFormula === 'katchMcArdle'
       ? calcResult.katchMcArdle
       : calcResult.mifflin;
+  const cheatDayPlan = buildCheatDayPlan(profile);
+  const targetPlan = cheatDayPlan.isTodayCheatDay
+    ? {
+        targetCalories: cheatDayPlan.calories,
+        protein_g: cheatDayPlan.protein_g,
+        fat_g: cheatDayPlan.fat_g,
+        carbs_g: cheatDayPlan.carbs_g,
+      }
+    : dailyPlan;
   const remainingKcal = Math.max(
     0,
-    dailyPlan.targetCalories - mealTotal.calories,
+    targetPlan.targetCalories - mealTotal.calories,
   );
-  const overKcal = Math.max(0, mealTotal.calories - dailyPlan.targetCalories);
+  const overKcal = Math.max(0, mealTotal.calories - targetPlan.targetCalories);
   // ホームでは1日固定 seed で1つだけ食材例を表示（軽量）
   const todaySeed =
     new Date().getFullYear() * 10000 +
@@ -159,7 +170,7 @@ export default async function Home() {
         </div>
         <div className="mt-5 grid grid-cols-3 gap-2 text-center">
           <HeroMetric label="摂取" value={Math.round(mealTotal.calories).toLocaleString()} unit="kcal" />
-          <HeroMetric label="目標" value={Math.round(dailyPlan.targetCalories).toLocaleString()} unit="kcal" />
+          <HeroMetric label="目標" value={Math.round(targetPlan.targetCalories).toLocaleString()} unit="kcal" />
           <HeroMetric label="残り" value={Math.round(overKcal > 0 ? overKcal : remainingKcal).toLocaleString()} unit="kcal" tone={overKcal > 0 ? 'danger' : 'success'} />
         </div>
       </div>
@@ -215,13 +226,13 @@ export default async function Home() {
           <div className="text-lg font-bold tabular-nums">
             {Math.round(mealTotal.calories).toLocaleString()} kcal
             <span className="text-xs font-normal text-gray-500 ml-1">
-              / {Math.round(dailyPlan.targetCalories).toLocaleString()} 目標 ({mealRows.length}件)
+              / {Math.round(targetPlan.targetCalories).toLocaleString()} 目標 ({mealRows.length}件)
             </span>
           </div>
           <div className="text-xs text-gray-600">
-            P{Math.round(mealTotal.protein_g)}/{Math.round(dailyPlan.protein_g)} F
-            {Math.round(mealTotal.fat_g)}/{Math.round(dailyPlan.fat_g)} C
-            {Math.round(mealTotal.carbs_g)}/{Math.round(dailyPlan.carbs_g)}
+            P{Math.round(mealTotal.protein_g)}/{Math.round(targetPlan.protein_g)} F
+            {Math.round(mealTotal.fat_g)}/{Math.round(targetPlan.fat_g)} C
+            {Math.round(mealTotal.carbs_g)}/{Math.round(targetPlan.carbs_g)}
           </div>
           <div
             className={`mt-1.5 text-xs font-medium ${
@@ -240,6 +251,23 @@ export default async function Home() {
                 = {funExamples[0].display}
               </span>
             )}
+          </div>
+        </div>
+      </ShortcutCard>
+
+      <ShortcutCard href="/plan" title={cheatDayPlan.title} icon={Zap}>
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div>
+            <div className="text-gray-500">次回目安</div>
+            <div className="font-semibold tabular-nums text-[#a3ff12]">
+              {cheatDayPlan.nextDate ?? '-'}
+            </div>
+          </div>
+          <div>
+            <div className="text-gray-500">リフィード</div>
+            <div className="font-semibold tabular-nums text-[#20e0ff]">
+              {cheatDayPlan.calories.toLocaleString()}kcal
+            </div>
           </div>
         </div>
       </ShortcutCard>
@@ -279,6 +307,7 @@ export default async function Home() {
         </h2>
         <div className="grid grid-cols-2 gap-2">
           <QuickLink href="/plan" icon={BarChart3} label="食事プラン" />
+          <QuickLink href="/calendar" icon={CalendarDays} label="カレンダー" />
           <QuickLink href="/trend" icon={TrendingUp} label="トレンド分析" />
           <QuickLink href="/workout" icon={Dumbbell} label="筋トレメモ" />
           <QuickLink href="/history" icon={History} label="食事履歴" />

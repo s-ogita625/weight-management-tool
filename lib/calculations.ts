@@ -126,16 +126,39 @@ function buildResult(
   let protein_g: number;
   let fat_g: number;
   if (goal === 'cut') {
-    // 通常 cut: 2.2 g/kg LBM / リーンカット時は 2.4 g/kg LBM (ISSN max range)
-    protein_g = (isLeanCut ? 2.4 : 2.2) * lbmKg;
-    fat_g = 0.9 * input.weightKg; // 0.8–1.0 g/kg BW（ホルモン維持の最低値）
+    const deficitRate = Math.abs(clampedWeekly) / input.weightKg;
+    const isLean =
+      input.gender === 'male'
+        ? input.bodyFatPct <= 15
+        : input.bodyFatPct <= 23;
+    const isHardTraining =
+      input.trainingFreq === '3-4' || input.trainingFreq === '5+';
+    const proteinPerBodyWeight =
+      isLeanCut || isLean || isHardTraining || deficitRate >= 0.0075
+        ? 2.2
+        : 2.0;
+    const proteinPerLeanMass =
+      isLeanCut || isLean || deficitRate >= 0.0075 ? 2.6 : 2.3;
+
+    // 減量中は筋量維持を優先し、体重ベースと除脂肪体重ベースの高い方を採用。
+    protein_g = Math.max(
+      proteinPerBodyWeight * input.weightKg,
+      proteinPerLeanMass * lbmKg,
+    );
+    fat_g = clamp(
+      (targetCalories * 0.22) / 9,
+      0.6 * input.weightKg,
+      0.9 * input.weightKg,
+    );
   } else if (goal === 'bulk') {
-    protein_g = 1.8 * lbmKg; // 1.6–2.2 g/kg LBM
+    protein_g = Math.max(1.8 * input.weightKg, 2.0 * lbmKg);
     fat_g = (targetCalories * 0.275) / 9; // ~27.5% kcal
   } else {
     // maintain - リコンプならタンパク質を高めに (Barakat 2020)
     const isRecomp = input.priority === 'recomposition';
-    protein_g = (isRecomp ? 2.2 : 1.8) * input.weightKg;
+    protein_g = isRecomp
+      ? Math.max(2.2 * input.weightKg, 2.4 * lbmKg)
+      : Math.max(1.8 * input.weightKg, 2.0 * lbmKg);
     fat_g = (targetCalories * 0.275) / 9;
   }
   const carbs_g = Math.max(
@@ -180,6 +203,11 @@ function buildResult(
   if (carbs_g < 100 && goal !== 'maintain') {
     warnings.push(
       `炭水化物が ${round(carbs_g)}g と非常に少なめです。エネルギー不足やパフォーマンス低下に注意してください`,
+    );
+  }
+  if (goal === 'cut' && protein_g < input.weightKg * 2) {
+    warnings.push(
+      '減量中のタンパク質が体重×2gを下回っています。筋量維持を優先する場合は目標期間を延ばしてください',
     );
   }
   if (targetCalories < 1200 && input.gender === 'female') {

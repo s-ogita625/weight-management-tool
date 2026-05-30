@@ -3,6 +3,7 @@ import MealLogForm from '@/components/forms/MealLogForm';
 import TodayMealList from '@/components/forms/TodayMealList';
 import RemainingCalories from '@/components/log/RemainingCalories';
 import { calculate } from '@/lib/calculations';
+import { buildCheatDayPlan } from '@/lib/cheat-day';
 import { getSessionUserId } from '@/lib/auth';
 import { dateInJST } from '@/lib/date';
 import { sql } from '@/lib/db';
@@ -76,12 +77,20 @@ export default async function LogPage() {
       result.recommendedFormula === 'katchMcArdle'
         ? result.katchMcArdle
         : result.mifflin;
-    target = {
-      calories: recommended.targetCalories,
-      protein_g: recommended.protein_g,
-      fat_g: recommended.fat_g,
-      carbs_g: recommended.carbs_g,
-    };
+    const cheatDayPlan = buildCheatDayPlan(p);
+    target = cheatDayPlan.isTodayCheatDay
+      ? {
+          calories: cheatDayPlan.calories,
+          protein_g: cheatDayPlan.protein_g,
+          fat_g: cheatDayPlan.fat_g,
+          carbs_g: cheatDayPlan.carbs_g,
+        }
+      : {
+          calories: recommended.targetCalories,
+          protein_g: recommended.protein_g,
+          fat_g: recommended.fat_g,
+          carbs_g: recommended.carbs_g,
+        };
   }
 
   function pct(actual: number, t: number): number {
