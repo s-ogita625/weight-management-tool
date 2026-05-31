@@ -4,6 +4,7 @@ import {
   BarChart3,
   Bot,
   CalendarDays,
+  Droplets,
   Dumbbell,
   History,
   MessageCircle,
@@ -47,7 +48,7 @@ export default async function Home() {
         <div className="my-6 grid grid-cols-2 gap-2">
           <FeatureTile icon={BarChart3} label="科学的PFC" />
           <FeatureTile icon={Utensils} label="食事ごと記録" />
-          <FeatureTile icon={TrendingUp} label="推移分析" />
+          <FeatureTile icon={TrendingUp} label="体重推移" />
           <FeatureTile icon={Bot} label="AIコーチ" />
           <FeatureTile icon={Dumbbell} label="筋トレ記録" />
           <FeatureTile icon={Zap} label="リーンカット" />
@@ -74,7 +75,13 @@ export default async function Home() {
   const today = dateInJST();
 
   // 4 つのデータ取得を並列実行（neon HTTP は 1 SQL = 1 リクエストなので並列化が効く）
-  const [profileRowsRaw, morningRowsRaw, mealRowsRaw, workoutStats] =
+  const [
+    profileRowsRaw,
+    morningRowsRaw,
+    mealRowsRaw,
+    hydrationRowsRaw,
+    workoutStats,
+  ] =
     await Promise.all([
       sql`select * from profiles where user_id = ${userId} limit 1`,
       sql`
@@ -89,6 +96,11 @@ export default async function Home() {
         from meal_logs
         where user_id = ${userId} and date = ${today}
       `,
+      sql`
+        select drink_type, amount_ml
+        from hydration_logs
+        where user_id = ${userId} and date = ${today}
+      `,
       getWorkoutStats(userId),
     ]);
 
@@ -100,6 +112,10 @@ export default async function Home() {
   const morning = morningRows[0] ?? null;
 
   const mealRows = mealRowsRaw as unknown as MealLog[];
+  const hydrationRows = hydrationRowsRaw as unknown as Array<{
+    drink_type: string;
+    amount_ml: number;
+  }>;
   const mealTotal = mealRows.reduce(
     (a, r) => ({
       calories: a.calories + Number(r.calories),
@@ -109,6 +125,19 @@ export default async function Home() {
     }),
     { calories: 0, protein_g: 0, fat_g: 0, carbs_g: 0 },
   );
+  const hydrationTotal = hydrationRows.reduce(
+    (sum, row) => sum + Number(row.amount_ml),
+    0,
+  );
+  const waterTotal = hydrationRows
+    .filter((row) => row.drink_type === 'water')
+    .reduce((sum, row) => sum + Number(row.amount_ml), 0);
+  const proteinDrinkTotal = hydrationRows
+    .filter((row) => row.drink_type === 'protein')
+    .reduce((sum, row) => sum + Number(row.amount_ml), 0);
+  const coffeeTotal = hydrationRows
+    .filter((row) => row.drink_type === 'coffee')
+    .reduce((sum, row) => sum + Number(row.amount_ml), 0);
 
   // 1日の目標カロリーを算出（リーンカット設定込み）
   const calcResult = calculate({
@@ -269,6 +298,34 @@ export default async function Home() {
         </div>
       </ShortcutCard>
 
+      <ShortcutCard href="/log#hydration" title="水分補給を記録" icon={Droplets}>
+        <div className="grid grid-cols-3 gap-2 text-xs">
+          <div>
+            <div className="text-gray-500">合計</div>
+            <div className="font-semibold tabular-nums text-[#20e0ff]">
+              {(hydrationTotal / 1000).toFixed(1)}L
+            </div>
+          </div>
+          <div>
+            <div className="text-gray-500">水</div>
+            <div className="font-semibold tabular-nums text-[#a3ff12]">
+              {waterTotal}ml
+            </div>
+          </div>
+          <div>
+            <div className="text-gray-500">コーヒー</div>
+            <div className="font-semibold tabular-nums text-amber-200">
+              {coffeeTotal}ml
+            </div>
+          </div>
+        </div>
+        {proteinDrinkTotal > 0 && (
+          <div className="mt-2 text-xs text-slate-400">
+            プロテイン飲料 {proteinDrinkTotal}ml も記録済み
+          </div>
+        )}
+      </ShortcutCard>
+
       <ShortcutCard href="/plan" title={cheatDayPlan.title} icon={Zap}>
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div>
@@ -322,7 +379,7 @@ export default async function Home() {
         <div className="grid grid-cols-2 gap-2">
           <QuickLink href="/plan" icon={BarChart3} label="食事プラン" />
           <QuickLink href="/calendar" icon={CalendarDays} label="カレンダー" />
-          <QuickLink href="/trend" icon={TrendingUp} label="トレンド分析" />
+          <QuickLink href="/trend" icon={TrendingUp} label="体重推移" />
           <QuickLink href="/workout" icon={Dumbbell} label="筋トレメモ" />
           <QuickLink href="/history" icon={History} label="食事履歴" />
           <QuickLink href="/coach" icon={Bot} label="AIコーチング" />

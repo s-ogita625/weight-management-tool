@@ -63,6 +63,7 @@ export async function addMealAction(_prev: unknown, formData: FormData) {
   // ページ単位で再検証（layout 全体ではなく該当ページのみ → 高速）
   revalidatePath('/log');
   revalidatePath('/history');
+  revalidatePath('/calendar');
   revalidatePath('/');
   return { ok: true as const };
 }
@@ -77,6 +78,7 @@ export async function deleteMealAction(id: string) {
 
   revalidatePath('/history');
   revalidatePath('/log');
+  revalidatePath('/calendar');
   revalidatePath('/');
 }
 

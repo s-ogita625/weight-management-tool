@@ -30,7 +30,13 @@ export default async function TrendPage() {
 
   return (
     <div className="py-4 space-y-4">
-      <h1 className="text-2xl font-bold">体重・体調トレンド</h1>
+      <div>
+        <div className="sport-kicker">Weight progress</div>
+        <h1 className="mt-1 text-2xl font-black">体重推移</h1>
+        <p className="mt-2 text-sm leading-relaxed text-slate-300">
+          体重・体脂肪率の変化を中心に、睡眠や疲労などのコンディションも合わせて確認できます。
+        </p>
+      </div>
       {logs.length === 0 ? (
         <p className="text-sm text-gray-600">
           まだ記録がありません。朝の記録ページから入力してください。

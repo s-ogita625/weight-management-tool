@@ -3,6 +3,7 @@ import 'server-only';
 import { sql } from '@/lib/db';
 import { calculate } from '@/lib/calculations';
 import { buildCheatDayPlan, type CheatDayPlan } from '@/lib/cheat-day';
+import { dateInJST } from '@/lib/date';
 import { getWorkoutSessions, getWorkoutStats } from '@/lib/workouts';
 import {
   correlation,
@@ -20,8 +21,11 @@ import {
   QUALITY_LABELS,
   TRAINING_FREQ_LABELS,
   BODY_PART_LABELS,
+  HYDRATION_DRINK_LABELS,
   type DailyLog,
   type HistoricalAnalysis,
+  type HydrationDrinkType,
+  type HydrationLog,
   type MealLog,
   type Profile,
   type WorkoutSessionDetail,
@@ -51,6 +55,10 @@ export interface UserContext {
   workoutSessions: WorkoutSessionDetail[];
   /** 筋トレ集計 */
   workoutStats: WorkoutStats;
+  /** 過去14日の水分補給ログ */
+  hydrationLogs: HydrationLog[];
+  /** 水分補給集計 */
+  hydrationStats: HydrationStats;
   /** チートデイ/リフィード計画 */
   cheatDayPlan: CheatDayPlan | null;
 }
@@ -98,6 +106,20 @@ export interface ContextStats {
   dailyLogsCount: number;
 }
 
+export interface HydrationStats {
+  daysLogged: number;
+  totalMl: number;
+  avgDailyMl: number;
+  avgWaterMl: number;
+  avgProteinMl: number;
+  avgCoffeeMl: number;
+  avgOtherMl: number;
+  todayMl: number;
+  todayWaterMl: number;
+  todayCoffeeMl: number;
+  drinkTypeTotals: Record<HydrationDrinkType, number>;
+}
+
 /**
  * ユーザーのプロフィールと食事履歴を読み出して、
  * AI 用の構造化コンテキストを返す。
@@ -111,6 +133,7 @@ export async function buildUserContext(
   const [
     profileRowsRaw,
     mealLogsRaw,
+    hydrationLogsRaw,
     dailyLogsRaw,
     workoutSessions,
     workoutStats,
@@ -122,6 +145,15 @@ export async function buildUserContext(
              meal_type, food_name,
              calories, protein_g, fat_g, carbs_g, memo, created_at
       from meal_logs
+      where user_id = ${userId}
+        and date >= current_date - (${daysBack}::int) * interval '1 day'
+      order by date desc, time desc nulls last, created_at desc
+    `,
+    sql`
+      select id, user_id, to_char(date, 'YYYY-MM-DD') as date,
+             to_char(time, 'HH24:MI') as time,
+             drink_type, amount_ml, memo, created_at
+      from hydration_logs
       where user_id = ${userId}
         and date >= current_date - (${daysBack}::int) * interval '1 day'
       order by date desc, time desc nulls last, created_at desc
@@ -143,6 +175,7 @@ export async function buildUserContext(
   const profileRows = profileRowsRaw as unknown as Profile[];
   const profile = profileRows[0] ?? null;
   const logs = mealLogsRaw as unknown as MealLog[];
+  const hydrationLogs = hydrationLogsRaw as unknown as HydrationLog[];
   const dailyLogs = dailyLogsRaw as unknown as DailyLog[];
 
   let target: UserContext['target'] = null;
@@ -201,6 +234,7 @@ export async function buildUserContext(
 
   // 統計
   const stats = computeStats(dailyTotals, target, logs, dailyLogs);
+  const hydrationStats = computeHydrationStats(hydrationLogs);
 
   return {
     profile,
@@ -218,7 +252,51 @@ export async function buildUserContext(
     ),
     workoutSessions,
     workoutStats,
+    hydrationLogs,
+    hydrationStats,
     cheatDayPlan,
+  };
+}
+
+function computeHydrationStats(logs: HydrationLog[]): HydrationStats {
+  const byDate = new Map<string, number>();
+  const drinkTypeTotals: Record<HydrationDrinkType, number> = {
+    water: 0,
+    protein: 0,
+    coffee: 0,
+    other: 0,
+  };
+  for (const log of logs) {
+    const amount = Number(log.amount_ml);
+    byDate.set(log.date, (byDate.get(log.date) ?? 0) + amount);
+    drinkTypeTotals[log.drink_type] += amount;
+  }
+  const daysLogged = byDate.size;
+  const totalMl = logs.reduce((sum, log) => sum + Number(log.amount_ml), 0);
+  const today = dateInJST();
+  const todayLogs = logs.filter((log) => log.date === today);
+  const todayMl = todayLogs.reduce((sum, log) => sum + Number(log.amount_ml), 0);
+  const todayWaterMl = todayLogs
+    .filter((log) => log.drink_type === 'water')
+    .reduce((sum, log) => sum + Number(log.amount_ml), 0);
+  const todayCoffeeMl = todayLogs
+    .filter((log) => log.drink_type === 'coffee')
+    .reduce((sum, log) => sum + Number(log.amount_ml), 0);
+  const avg = (amount: number) =>
+    daysLogged === 0 ? 0 : Math.round(amount / daysLogged);
+
+  return {
+    daysLogged,
+    totalMl,
+    avgDailyMl: avg(totalMl),
+    avgWaterMl: avg(drinkTypeTotals.water),
+    avgProteinMl: avg(drinkTypeTotals.protein),
+    avgCoffeeMl: avg(drinkTypeTotals.coffee),
+    avgOtherMl: avg(drinkTypeTotals.other),
+    todayMl,
+    todayWaterMl,
+    todayCoffeeMl,
+    drinkTypeTotals,
   };
 }
 
@@ -527,6 +605,26 @@ export function formatContextForAI(ctx: UserContext): string {
     );
   }
 
+  if (ctx.hydrationStats.daysLogged > 0) {
+    const hs = ctx.hydrationStats;
+    parts.push(
+      `【水分補給(過去14日)】記録日数 ${hs.daysLogged}日 / 1日平均 ${hs.avgDailyMl}ml / 水 ${hs.avgWaterMl}ml / プロテイン飲料 ${hs.avgProteinMl}ml / コーヒー ${hs.avgCoffeeMl}ml / その他 ${hs.avgOtherMl}ml / 今日 ${hs.todayMl}ml（水${hs.todayWaterMl}ml・コーヒー${hs.todayCoffeeMl}ml）`,
+    );
+
+    parts.push(
+      `【直近の水分記録(最大8件)】\n${ctx.hydrationLogs
+        .slice(0, 8)
+        .map((log) => {
+          const tm = log.time ? ` ${log.time}` : '';
+          const memo = log.memo ? ` / ${log.memo}` : '';
+          return `- ${log.date}${tm}: ${HYDRATION_DRINK_LABELS[log.drink_type]} ${log.amount_ml}ml${memo}`;
+        })
+        .join('\n')}`,
+    );
+  } else {
+    parts.push('【水分補給】まだ水分補給の記録なし');
+  }
+
   // 深掘り分析
   if (ctx.historicalAnalysis) {
     const ha = ctx.historicalAnalysis;
@@ -667,6 +765,7 @@ export function buildSystemPrompt(ctx: UserContext): string {
 
 【あなたの役割】
 - ユーザーの食事記録・身体データ・体重トレンド・コンディション(睡眠/疲労/気分/便通)を総合的に解釈し、エビデンスに基づくアドバイスを行う
+- 水分補給（水・プロテイン飲料・コーヒー等）を、体重の日内/日次変動、むくみ、便通、疲労感、トレーニング出力の解釈材料として扱う
 - 体重トレンド（線形回帰の予測値・週次変化）が目標に対して妥当かを評価し、必要なら摂取量や運動量の調整を具体的に提案する
 - 筋トレ記録（種目・重量・回数・セット・部位別ボリューム）から筋量維持に十分な刺激が入っているかを評価する
 - 減量中は重量維持・総セット数・疲労管理を重視し、筋肉を落とさないための現実的な調整を提案する

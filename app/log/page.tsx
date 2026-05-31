@@ -1,5 +1,8 @@
 import { redirect } from 'next/navigation';
+import { Coffee, Droplets, GlassWater } from 'lucide-react';
+import HydrationLogForm from '@/components/forms/HydrationLogForm';
 import MealLogForm from '@/components/forms/MealLogForm';
+import TodayHydrationList from '@/components/forms/TodayHydrationList';
 import TodayMealList from '@/components/forms/TodayMealList';
 import RemainingCalories from '@/components/log/RemainingCalories';
 import { calculate } from '@/lib/calculations';
@@ -7,7 +10,7 @@ import { buildCheatDayPlan, type CheatDayPlan } from '@/lib/cheat-day';
 import { getSessionUserId } from '@/lib/auth';
 import { dateInJST } from '@/lib/date';
 import { sql } from '@/lib/db';
-import type { MealLog, Profile } from '@/lib/types';
+import type { HydrationLog, MealLog, Profile } from '@/lib/types';
 
 // SSR を毎リクエスト実行してキャッシュを使わない
 export const dynamic = 'force-dynamic';
@@ -20,7 +23,7 @@ export default async function LogPage() {
   // JST 基準で「今日」を計算（クライアントの dateInJST と一致させる）
   const date = dateInJST();
 
-  const [mealRowsRaw, profileRowsRaw] = await Promise.all([
+  const [mealRowsRaw, hydrationRowsRaw, profileRowsRaw] = await Promise.all([
     sql`
       select id, user_id, to_char(date, 'YYYY-MM-DD') as date,
              to_char(time, 'HH24:MI') as time,
@@ -30,9 +33,18 @@ export default async function LogPage() {
       where user_id = ${userId} and date = ${date}
       order by time asc nulls last, created_at asc
     `,
+    sql`
+      select id, user_id, to_char(date, 'YYYY-MM-DD') as date,
+             to_char(time, 'HH24:MI') as time,
+             drink_type, amount_ml, memo, created_at
+      from hydration_logs
+      where user_id = ${userId} and date = ${date}
+      order by time asc nulls last, created_at asc
+    `,
     sql`select * from profiles where user_id = ${userId} limit 1`,
   ]);
   const mealRows = mealRowsRaw as unknown as MealLog[];
+  const hydrationRows = hydrationRowsRaw as unknown as HydrationLog[];
   const profileRows = profileRowsRaw as unknown as Profile[];
 
   const total = mealRows.reduce<{
@@ -48,6 +60,15 @@ export default async function LogPage() {
       carbs_g: a.carbs_g + Number(r.carbs_g),
     }),
     { calories: 0, protein_g: 0, fat_g: 0, carbs_g: 0 },
+  );
+  const hydrationTotal = hydrationRows.reduce(
+    (acc, row) => {
+      const amount = Number(row.amount_ml);
+      acc.total += amount;
+      acc[row.drink_type] += amount;
+      return acc;
+    },
+    { total: 0, water: 0, protein: 0, coffee: 0, other: 0 },
   );
 
   // プロフィールがあれば目標との差分を計算
@@ -181,11 +202,121 @@ export default async function LogPage() {
         </div>
       )}
 
+      <HydrationSummary total={hydrationTotal} count={hydrationRows.length} />
+
+      <HydrationLogForm />
+
+      <div>
+        <h2 className="mb-2 text-sm font-semibold text-slate-200">
+          本日の水分記録 ({hydrationRows.length}件)
+        </h2>
+        <TodayHydrationList logs={hydrationRows} />
+      </div>
+
       <div>
         <h2 className="text-sm font-semibold text-gray-700 mb-2">
           新しい食事を追加
         </h2>
         <MealLogForm />
+      </div>
+    </div>
+  );
+}
+
+function HydrationSummary({
+  total,
+  count,
+}: {
+  total: {
+    total: number;
+    water: number;
+    protein: number;
+    coffee: number;
+    other: number;
+  };
+  count: number;
+}) {
+  return (
+    <section className="sport-card-strong p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="sport-kicker">Today hydration</div>
+          <h2 className="mt-1 text-lg font-black">本日の水分補給</h2>
+        </div>
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-black/25 text-[#20e0ff] ring-1 ring-white/10">
+          <Droplets size={21} />
+        </div>
+      </div>
+
+      <div className="mt-4 flex items-end justify-between gap-3">
+        <div>
+          <div className="text-4xl font-black tabular-nums text-white">
+            {(total.total / 1000).toFixed(1)}
+            <span className="ml-1 text-base text-slate-400">L</span>
+          </div>
+          <div className="text-xs font-semibold text-slate-400">
+            {total.total.toLocaleString()}ml / {count}件
+          </div>
+        </div>
+        <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-right">
+          <div className="text-[10px] font-semibold text-slate-500">
+            カフェイン系
+          </div>
+          <div className="text-sm font-black tabular-nums text-amber-200">
+            {total.coffee.toLocaleString()}ml
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-3 gap-2">
+        <HydrationMiniMetric
+          icon={Droplets}
+          label="水"
+          value={`${total.water.toLocaleString()}ml`}
+          tone="water"
+        />
+        <HydrationMiniMetric
+          icon={GlassWater}
+          label="プロテイン"
+          value={`${total.protein.toLocaleString()}ml`}
+          tone="protein"
+        />
+        <HydrationMiniMetric
+          icon={Coffee}
+          label="その他"
+          value={`${(total.coffee + total.other).toLocaleString()}ml`}
+          tone="other"
+        />
+      </div>
+    </section>
+  );
+}
+
+function HydrationMiniMetric({
+  icon: Icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: typeof Droplets;
+  label: string;
+  value: string;
+  tone: 'water' | 'protein' | 'other';
+}) {
+  const toneClass =
+    tone === 'water'
+      ? 'text-[#7af7ff]'
+      : tone === 'protein'
+        ? 'text-[#a3ff12]'
+        : 'text-amber-200';
+  return (
+    <div className="rounded-lg border border-white/10 bg-black/20 p-2">
+      <Icon size={16} className={toneClass} />
+      <div className="mt-1 text-[10px] font-semibold text-slate-500">
+        {label}
+      </div>
+      <div className={`text-sm font-black tabular-nums ${toneClass}`}>
+        {value}
       </div>
     </div>
   );

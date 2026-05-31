@@ -9,6 +9,12 @@ export interface CalendarDaySummary {
   fat_g: number;
   carbs_g: number;
   meal_count: number;
+  hydration_ml: number;
+  water_ml: number;
+  protein_ml: number;
+  coffee_ml: number;
+  other_ml: number;
+  hydration_count: number;
   weight_kg: number | null;
   body_fat_pct: number | null;
   sleep_hours: number | null;
@@ -125,6 +131,11 @@ export default function RecordCalendar({ days }: Props) {
                         {Number(summary.weight_kg).toFixed(1)}kg
                       </div>
                     )}
+                    {summary.hydration_ml > 0 && (
+                      <div className="truncate text-[10px] text-[#7af7ff]">
+                        {(Number(summary.hydration_ml) / 1000).toFixed(1)}L
+                      </div>
+                    )}
                     {summary.body_fat_pct !== null && (
                       <div className="truncate text-[10px] text-slate-300">
                         {Number(summary.body_fat_pct).toFixed(1)}%
@@ -149,6 +160,18 @@ export default function RecordCalendar({ days }: Props) {
             />
             <Metric label="P" value={`${Math.round(Number(selectedSummary.protein_g))}g`} />
             <Metric label="F/C" value={`${Math.round(Number(selectedSummary.fat_g))}g / ${Math.round(Number(selectedSummary.carbs_g))}g`} />
+            <Metric
+              label="水分補給"
+              value={
+                selectedSummary.hydration_ml > 0
+                  ? `${(Number(selectedSummary.hydration_ml) / 1000).toFixed(1)}L (${selectedSummary.hydration_count}件)`
+                  : '未記録'
+              }
+            />
+            <Metric
+              label="水/プロテイン/コーヒー"
+              value={`${selectedSummary.water_ml}ml / ${selectedSummary.protein_ml}ml / ${selectedSummary.coffee_ml}ml`}
+            />
             <Metric
               label="体重/体脂肪"
               value={

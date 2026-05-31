@@ -26,10 +26,26 @@ export default async function CalendarPage() {
       where user_id = ${userId}
       group by user_id, date
     ),
+    hydration_daily as (
+      select
+        user_id,
+        date,
+        coalesce(sum(amount_ml), 0)::int as hydration_ml,
+        coalesce(sum(amount_ml) filter (where drink_type = 'water'), 0)::int as water_ml,
+        coalesce(sum(amount_ml) filter (where drink_type = 'protein'), 0)::int as protein_ml,
+        coalesce(sum(amount_ml) filter (where drink_type = 'coffee'), 0)::int as coffee_ml,
+        coalesce(sum(amount_ml) filter (where drink_type = 'other'), 0)::int as other_ml,
+        count(*)::int as hydration_count
+      from hydration_logs
+      where user_id = ${userId}
+      group by user_id, date
+    ),
     all_days as (
       select date from meal_daily
       union
       select date from daily_logs where user_id = ${userId}
+      union
+      select date from hydration_daily
     )
     select
       to_char(d.date, 'YYYY-MM-DD') as date,
@@ -38,6 +54,12 @@ export default async function CalendarPage() {
       coalesce(m.fat_g, 0)::float as fat_g,
       coalesce(m.carbs_g, 0)::float as carbs_g,
       coalesce(m.meal_count, 0)::int as meal_count,
+      coalesce(h.hydration_ml, 0)::int as hydration_ml,
+      coalesce(h.water_ml, 0)::int as water_ml,
+      coalesce(h.protein_ml, 0)::int as protein_ml,
+      coalesce(h.coffee_ml, 0)::int as coffee_ml,
+      coalesce(h.other_ml, 0)::int as other_ml,
+      coalesce(h.hydration_count, 0)::int as hydration_count,
       dl.weight_kg::float as weight_kg,
       dl.body_fat_pct::float as body_fat_pct,
       dl.sleep_hours::float as sleep_hours,
@@ -46,6 +68,8 @@ export default async function CalendarPage() {
     from all_days d
     left join meal_daily m
       on m.user_id = ${userId} and m.date = d.date
+    left join hydration_daily h
+      on h.user_id = ${userId} and h.date = d.date
     left join daily_logs dl
       on dl.user_id = ${userId} and dl.date = d.date
     order by d.date desc
@@ -60,7 +84,7 @@ export default async function CalendarPage() {
         <div className="sport-kicker">Record calendar</div>
         <h1 className="mt-1 text-2xl font-black">記録カレンダー</h1>
         <p className="mt-2 text-sm leading-relaxed text-slate-300">
-          食事、PFC、体重、体脂肪、コンディションを日別にまとめて確認できます。
+          食事、PFC、水分補給、体重、体脂肪、コンディションを日別にまとめて確認できます。
         </p>
       </div>
       <RecordCalendar days={rows} />

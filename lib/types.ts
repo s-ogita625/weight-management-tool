@@ -66,6 +66,36 @@ export interface MealLog {
   created_at?: string;
 }
 
+// =================
+// 水分補給
+// =================
+export type HydrationDrinkType = 'water' | 'protein' | 'coffee' | 'other';
+
+export interface HydrationLog {
+  id: string;
+  user_id: string;
+  date: string; // YYYY-MM-DD
+  time: string | null; // HH:MM or null
+  drink_type: HydrationDrinkType;
+  amount_ml: number;
+  memo: string | null;
+  created_at?: string;
+}
+
+export const HYDRATION_DRINK_LABELS: Record<HydrationDrinkType, string> = {
+  water: '水',
+  protein: 'プロテイン',
+  coffee: 'コーヒー',
+  other: 'その他',
+};
+
+export const HYDRATION_DRINK_ICONS: Record<HydrationDrinkType, string> = {
+  water: 'H2O',
+  protein: 'PRO',
+  coffee: 'CAF',
+  other: 'ETC',
+};
+
 export interface AiChatMessage {
   id: string;
   user_id: string;

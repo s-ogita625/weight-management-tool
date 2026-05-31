@@ -130,6 +130,7 @@ export async function saveDailyLogAction(_prev: unknown, formData: FormData) {
 
   revalidatePath('/morning');
   revalidatePath('/trend');
+  revalidatePath('/calendar');
   revalidatePath('/plan');
   revalidatePath('/');
   return { ok: true as const };
@@ -144,5 +145,6 @@ export async function deleteDailyLogAction(date: string) {
   `;
   revalidatePath('/morning');
   revalidatePath('/trend');
+  revalidatePath('/calendar');
   revalidatePath('/');
 }
