@@ -59,7 +59,7 @@ export interface UserContext {
   hydrationLogs: HydrationLog[];
   /** 水分補給集計 */
   hydrationStats: HydrationStats;
-  /** 誕生日フリーデイ計画 */
+  /** 年4回フリーデイ計画 */
   cheatDayPlan: CheatDayPlan | null;
 }
 
@@ -570,10 +570,10 @@ export function formatContextForAI(ctx: UserContext): string {
   if (ctx.cheatDayPlan?.enabled) {
     const c = ctx.cheatDayPlan;
     parts.push(
-      `【誕生日フリーデイ】${c.frequencyLabel} / 次回 ${c.nextDate ?? '-'} / 対象 ${c.birthdayWindow ?? '-'} / ${
-        c.isBirthdayFreeDay
-          ? '今日は誕生日フリーデイ（カロリー・PFC制限なし）'
-          : '通常日はカロリー・PFC目標を維持。定期リフィードや追加フリーデイは作らない'
+      `【年4回フリーデイ】${c.frequencyLabel} / 次回 ${c.nextDate ?? '-'} / 今年の自動配置 ${c.birthdayWindow ?? '-'} / ${
+        c.isTodayCheatDay
+          ? `今日は${c.currentFreeDayLabel ?? 'フリーデイ'}（カロリー・PFC制限なし）`
+          : '通常日はカロリー・PFC目標を維持。対象日以外の追加フリーデイは作らない'
       }`,
     );
   }

@@ -6,6 +6,7 @@ export type CheatDayFrequency =
   | 'weekly'
   | 'biweekly'
   | 'monthly'
+  | 'quarterly_free'
   | 'event_only';
 export type MealType =
   | 'breakfast'
@@ -48,6 +49,7 @@ export const CHEAT_DAY_FREQUENCY_LABELS: Record<CheatDayFrequency, string> = {
   weekly: '週1回',
   biweekly: '2週間に1回',
   monthly: '月1回',
+  quarterly_free: '年4回（自動配置）',
   event_only: 'イベント時のみ',
 };
 

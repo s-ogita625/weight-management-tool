@@ -78,7 +78,7 @@ export default function ProfileForm({ initial }: Props) {
         name="cheat_day_enabled"
         value={cheatDayEnabled ? 'on' : 'off'}
       />
-      <input type="hidden" name="cheat_day_frequency" value="event_only" />
+      <input type="hidden" name="cheat_day_frequency" value="quarterly_free" />
       <input type="hidden" name="birthday_mmdd" value={birthdayMmdd} />
 
       {/* 性別 */}
@@ -247,11 +247,11 @@ export default function ProfileForm({ initial }: Props) {
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
             <div className="text-sm font-semibold text-gray-900">
-              誕生日フリーデイ設定
+              年4回フリーデイ設定
             </div>
             <div className="text-xs text-gray-600 mt-1 leading-relaxed">
-              誕生日当日の1日だけ、カロリーやPFCを気にせず好きなものを楽しむ日として扱います。
-              通常日のリフィードや定期チートは作らない、かなり厳しめの設定です。
+              誕生日を軸に、約3ヶ月間隔で年4回だけ「なんでも食べていい日」を自動配置します。
+              各回は1日のみで、通常日のリフィード目標は作りません。
             </div>
           </div>
           <button
@@ -274,10 +274,10 @@ export default function ProfileForm({ initial }: Props) {
         <div className="rounded-lg border border-white/10 bg-black/20 p-3">
           <div className="text-xs text-gray-500">許可日数</div>
           <div className="mt-1 text-sm font-bold text-[#a3ff12]">
-            年1回・誕生日当日のみ
+            年4回・約3ヶ月間隔・各1日
           </div>
           <p className="mt-1 text-xs leading-relaxed text-slate-300">
-            この日以外は通常のカロリー/PFC目標を使います。
+            例: 誕生日が6/25なら、3/25・6/25・9/25・12/25に自動配置します。
           </p>
         </div>
 

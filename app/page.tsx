@@ -158,12 +158,12 @@ export default async function Home() {
       ? calcResult.katchMcArdle
       : calcResult.mifflin;
   const cheatDayPlan = buildCheatDayPlan(profile);
-  const isBirthdayFreeDay = cheatDayPlan.isBirthdayFreeDay;
+  const isFreeDay = cheatDayPlan.isTodayCheatDay;
   const targetPlan = dailyPlan;
-  const remainingKcal = isBirthdayFreeDay
+  const remainingKcal = isFreeDay
     ? 0
     : Math.max(0, targetPlan.targetCalories - mealTotal.calories);
-  const overKcal = isBirthdayFreeDay
+  const overKcal = isFreeDay
     ? 0
     : Math.max(0, mealTotal.calories - targetPlan.targetCalories);
   // ホームでは1日固定 seed で1つだけ食材例を表示（軽量）
@@ -196,14 +196,14 @@ export default async function Home() {
           <HeroMetric label="摂取" value={Math.round(mealTotal.calories).toLocaleString()} unit="kcal" />
           <HeroMetric
             label="目標"
-            value={isBirthdayFreeDay ? 'FREE' : Math.round(targetPlan.targetCalories).toLocaleString()}
-            unit={isBirthdayFreeDay ? 'birthday' : 'kcal'}
-            tone={isBirthdayFreeDay ? 'success' : 'neutral'}
+            value={isFreeDay ? 'FREE' : Math.round(targetPlan.targetCalories).toLocaleString()}
+            unit={isFreeDay ? 'free day' : 'kcal'}
+            tone={isFreeDay ? 'success' : 'neutral'}
           />
           <HeroMetric
-            label={isBirthdayFreeDay ? '今日は' : '残り'}
-            value={isBirthdayFreeDay ? 'ENJOY' : Math.round(overKcal > 0 ? overKcal : remainingKcal).toLocaleString()}
-            unit={isBirthdayFreeDay ? 'no limit' : 'kcal'}
+            label={isFreeDay ? '今日は' : '残り'}
+            value={isFreeDay ? 'ENJOY' : Math.round(overKcal > 0 ? overKcal : remainingKcal).toLocaleString()}
+            unit={isFreeDay ? 'no limit' : 'kcal'}
             tone={overKcal > 0 ? 'danger' : 'success'}
           />
         </div>
@@ -264,7 +264,7 @@ export default async function Home() {
             </span>
           </div>
           <div className="text-xs text-gray-600">
-            {isBirthdayFreeDay
+            {isFreeDay
               ? `P${Math.round(mealTotal.protein_g)} F${Math.round(mealTotal.fat_g)} C${Math.round(mealTotal.carbs_g)}（今日は目標判定なし）`
               : `P${Math.round(mealTotal.protein_g)}/${Math.round(targetPlan.protein_g)} F${Math.round(mealTotal.fat_g)}/${Math.round(targetPlan.fat_g)} C${Math.round(mealTotal.carbs_g)}/${Math.round(targetPlan.carbs_g)}`}
           </div>
@@ -277,12 +277,12 @@ export default async function Home() {
                   : 'text-emerald-600'
             }`}
           >
-            {isBirthdayFreeDay
-              ? '🎂 誕生日フリーデイ。今日は好きなものを楽しむ日です'
+            {isFreeDay
+              ? `🎂 ${cheatDayPlan.currentFreeDayLabel ?? 'フリーデイ'}。今日は好きなものを楽しむ日です`
               : overKcal > 0
               ? `🚨 ${Math.round(overKcal)}kcal オーバー`
               : `🔥 残り ${Math.round(remainingKcal)}kcal`}
-            {funExamples.length > 0 && remainingKcal > 0 && overKcal === 0 && !isBirthdayFreeDay && (
+            {funExamples.length > 0 && remainingKcal > 0 && overKcal === 0 && !isFreeDay && (
               <span className="text-gray-500 font-normal ml-1">
                 = {funExamples[0].display}
               </span>

@@ -30,10 +30,10 @@ export async function saveProfileAction(_prev: unknown, formData: FormData) {
   const cheat_day_enabled = cheatDayRaw === 'on' || cheatDayRaw === 'true';
   const cheatDayFrequencyRaw = str('cheat_day_frequency');
   const cheat_day_frequency: CheatDayFrequency = (
-    ['auto', 'weekly', 'biweekly', 'monthly', 'event_only'] as const
+    ['auto', 'weekly', 'biweekly', 'monthly', 'quarterly_free', 'event_only'] as const
   ).includes(cheatDayFrequencyRaw as CheatDayFrequency)
     ? (cheatDayFrequencyRaw as CheatDayFrequency)
-    : 'auto';
+    : 'quarterly_free';
   const birthdayRaw = str('birthday_mmdd');
   const birthday_mmdd =
     /^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/.test(birthdayRaw)

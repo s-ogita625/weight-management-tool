@@ -100,7 +100,7 @@ export default async function LogPage() {
         ? result.katchMcArdle
         : result.mifflin;
     cheatDayPlan = buildCheatDayPlan(p);
-    target = cheatDayPlan.isBirthdayFreeDay
+    target = cheatDayPlan.isTodayCheatDay
       ? null
       : {
           calories: recommended.targetCalories,
@@ -165,9 +165,9 @@ export default async function LogPage() {
             tone="carbs"
           />
         </div>
-        {cheatDayPlan?.isBirthdayFreeDay && (
+        {cheatDayPlan?.isTodayCheatDay && (
           <div className="mt-3 rounded-xl border border-[#a3ff12]/30 bg-[#a3ff12]/10 px-3 py-2 text-xs font-semibold text-[#a3ff12]">
-            今日は誕生日フリーデイです。残りカロリーやPFC達成率は気にせず、食べたいものを楽しんでください。
+            今日は{cheatDayPlan.currentFreeDayLabel ?? 'フリーデイ'}です。残りカロリーやPFC達成率は気にせず、食べたいものを楽しんでください。
           </div>
         )}
       </div>

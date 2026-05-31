@@ -28,7 +28,7 @@ create table if not exists profiles (
   target_body_fat_pct numeric(4,1) not null check (target_body_fat_pct between 3 and 60),
   target_period text not null check (target_period in ('1mo','3mo','6mo','1yr')),
   cheat_day_enabled boolean not null default true,
-  cheat_day_frequency text not null default 'auto' check (cheat_day_frequency in ('auto','weekly','biweekly','monthly','event_only')),
+  cheat_day_frequency text not null default 'quarterly_free' check (cheat_day_frequency in ('auto','weekly','biweekly','monthly','quarterly_free','event_only')),
   birthday_mmdd text not null default '06-25' check (birthday_mmdd ~ '^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

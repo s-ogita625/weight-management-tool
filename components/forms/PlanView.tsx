@@ -225,13 +225,13 @@ export default function PlanView({ profile }: Props) {
         </div>
       </div>
 
-      {/* 誕生日フリーデイ */}
+      {/* 年4回フリーデイ */}
       <div className="bg-emerald-400/10 rounded-xl border border-emerald-300/25 p-4">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="font-semibold">{cheatDayPlan.title}</h2>
             <p className="mt-1 text-xs leading-relaxed text-gray-600">
-              誕生日当日の1日だけ、カロリーやPFCを気にせず好きなものを楽しむ日です。通常日のリフィード目標は作りません。
+              誕生日を軸に約3ヶ月間隔で年4回だけ、カロリーやPFCを気にせず好きなものを楽しむ日です。各回は1日のみです。
             </p>
           </div>
           <span
@@ -259,7 +259,7 @@ export default function PlanView({ profile }: Props) {
                 </div>
               </div>
               <div className="col-span-2">
-                <div className="text-xs text-gray-500">誕生日枠</div>
+                <div className="text-xs text-gray-500">今年の自動配置</div>
                 <div className="font-bold tabular-nums">
                   {cheatDayPlan.birthdayWindow}
                 </div>
@@ -272,7 +272,7 @@ export default function PlanView({ profile }: Props) {
                 上限なし
               </div>
               <p className="mt-2 text-xs leading-relaxed text-slate-300">
-                この日だけは「なんでも食べていい日」として扱います。食事記録は振り返り用に残せますが、達成率や残りPFCの判定には使いません。
+                対象日は「なんでも食べていい日」として扱います。食事記録は振り返り用に残せますが、達成率や残りPFCの判定には使いません。
               </p>
             </div>
             <ul className="mt-3 list-disc list-inside space-y-1 text-xs leading-relaxed text-gray-600">
