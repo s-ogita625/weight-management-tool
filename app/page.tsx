@@ -158,15 +158,8 @@ export default async function Home() {
       ? calcResult.katchMcArdle
       : calcResult.mifflin;
   const cheatDayPlan = buildCheatDayPlan(profile);
-  const targetPlan = cheatDayPlan.isTodayCheatDay
-    ? {
-        targetCalories: cheatDayPlan.calories,
-        protein_g: cheatDayPlan.protein_g,
-        fat_g: cheatDayPlan.fat_g,
-        carbs_g: cheatDayPlan.carbs_g,
-      }
-    : dailyPlan;
   const isBirthdayFreeDay = cheatDayPlan.isBirthdayFreeDay;
+  const targetPlan = dailyPlan;
   const remainingKcal = isBirthdayFreeDay
     ? 0
     : Math.max(0, targetPlan.targetCalories - mealTotal.calories);
@@ -335,9 +328,9 @@ export default async function Home() {
             </div>
           </div>
           <div>
-            <div className="text-gray-500">リフィード</div>
+            <div className="text-gray-500">当日</div>
             <div className="font-semibold tabular-nums text-[#20e0ff]">
-              {cheatDayPlan.calories.toLocaleString()}kcal
+              上限なし
             </div>
           </div>
         </div>

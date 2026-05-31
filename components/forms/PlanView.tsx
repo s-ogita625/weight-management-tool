@@ -225,13 +225,13 @@ export default function PlanView({ profile }: Props) {
         </div>
       </div>
 
-      {/* チートデイ / リフィード */}
+      {/* 誕生日フリーデイ */}
       <div className="bg-emerald-400/10 rounded-xl border border-emerald-300/25 p-4">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="font-semibold">{cheatDayPlan.title}</h2>
             <p className="mt-1 text-xs leading-relaxed text-gray-600">
-              通常は維持カロリー付近まで炭水化物を増やす日として扱います。誕生日当日は例外で、好きなものを楽しむフリーデイです。
+              誕生日当日の1日だけ、カロリーやPFCを気にせず好きなものを楽しむ日です。通常日のリフィード目標は作りません。
             </p>
           </div>
           <span
@@ -249,7 +249,7 @@ export default function PlanView({ profile }: Props) {
           <>
             <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
               <div>
-                <div className="text-xs text-gray-500">推奨頻度</div>
+                <div className="text-xs text-gray-500">許可日数</div>
                 <div className="font-bold">{cheatDayPlan.frequencyLabel}</div>
               </div>
               <div>
@@ -267,31 +267,13 @@ export default function PlanView({ profile }: Props) {
             </div>
 
             <div className="mt-4 rounded-lg border border-white/10 bg-black/20 p-3">
-              <div className="text-xs text-gray-500">リフィード日の目標</div>
-              <div className="mt-1 text-2xl font-bold tabular-nums">
-                {cheatDayPlan.calories.toLocaleString()}
-                <span className="ml-1 text-sm font-normal">kcal</span>
+              <div className="text-xs text-gray-500">誕生日当日の扱い</div>
+              <div className="mt-1 text-2xl font-black text-[#a3ff12]">
+                上限なし
               </div>
-              <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
-                <div className="rounded-lg border border-rose-300/25 p-2">
-                  <div className="font-semibold text-rose-300">P</div>
-                  <div className="font-bold tabular-nums">
-                    {cheatDayPlan.protein_g}g
-                  </div>
-                </div>
-                <div className="rounded-lg border border-amber-300/25 p-2">
-                  <div className="font-semibold text-amber-300">F</div>
-                  <div className="font-bold tabular-nums">
-                    {cheatDayPlan.fat_g}g
-                  </div>
-                </div>
-                <div className="rounded-lg border border-[#a3ff12]/25 p-2">
-                  <div className="font-semibold text-[#a3ff12]">C</div>
-                  <div className="font-bold tabular-nums">
-                    {cheatDayPlan.carbs_g}g
-                  </div>
-                </div>
-              </div>
+              <p className="mt-2 text-xs leading-relaxed text-slate-300">
+                この日だけは「なんでも食べていい日」として扱います。食事記録は振り返り用に残せますが、達成率や残りPFCの判定には使いません。
+              </p>
             </div>
             <ul className="mt-3 list-disc list-inside space-y-1 text-xs leading-relaxed text-gray-600">
               {cheatDayPlan.advice.map((item) => (

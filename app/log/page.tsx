@@ -102,13 +102,6 @@ export default async function LogPage() {
     cheatDayPlan = buildCheatDayPlan(p);
     target = cheatDayPlan.isBirthdayFreeDay
       ? null
-      : cheatDayPlan.isTodayCheatDay
-      ? {
-          calories: cheatDayPlan.calories,
-          protein_g: cheatDayPlan.protein_g,
-          fat_g: cheatDayPlan.fat_g,
-          carbs_g: cheatDayPlan.carbs_g,
-        }
       : {
           calories: recommended.targetCalories,
           protein_g: recommended.protein_g,

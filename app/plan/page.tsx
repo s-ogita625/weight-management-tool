@@ -27,6 +27,11 @@ export default async function PlanPage() {
     target_weight_kg: Number(r.target_weight_kg),
     target_body_fat_pct: Number(r.target_body_fat_pct),
     target_period: r.target_period,
+    lean_cut_mode: r.lean_cut_mode,
+    priority: r.priority,
+    cheat_day_enabled: r.cheat_day_enabled,
+    cheat_day_frequency: r.cheat_day_frequency,
+    birthday_mmdd: r.birthday_mmdd,
   };
 
   return (

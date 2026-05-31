@@ -3,12 +3,10 @@
 import { useActionState, useState } from 'react';
 import { saveProfileAction } from '@/app/actions/profile';
 import {
-  CHEAT_DAY_FREQUENCY_LABELS,
   GENDER_LABELS,
   PERIOD_LABELS,
   PRIORITY_LABELS,
   TRAINING_FREQ_LABELS,
-  type CheatDayFrequency,
   type Gender,
   type Period,
   type Priority,
@@ -54,8 +52,6 @@ export default function ProfileForm({ initial }: Props) {
   const [cheatDayEnabled, setCheatDayEnabled] = useState<boolean>(
     initial?.cheat_day_enabled ?? true,
   );
-  const [cheatDayFrequency, setCheatDayFrequency] =
-    useState<CheatDayFrequency>(initial?.cheat_day_frequency ?? 'auto');
   const [birthdayMonth, setBirthdayMonth] = useState<number>(
     Number(birthdayParts[0]) || 6,
   );
@@ -82,7 +78,7 @@ export default function ProfileForm({ initial }: Props) {
         name="cheat_day_enabled"
         value={cheatDayEnabled ? 'on' : 'off'}
       />
-      <input type="hidden" name="cheat_day_frequency" value={cheatDayFrequency} />
+      <input type="hidden" name="cheat_day_frequency" value="event_only" />
       <input type="hidden" name="birthday_mmdd" value={birthdayMmdd} />
 
       {/* 性別 */}
@@ -246,16 +242,16 @@ export default function ProfileForm({ initial }: Props) {
         </div>
       </div>
 
-      {/* チートデイ / リフィード */}
+      {/* 誕生日フリーデイ */}
       <div className="bg-emerald-400/10 border border-emerald-300/25 rounded-xl p-4 space-y-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
             <div className="text-sm font-semibold text-gray-900">
-              チートデイ / リフィード設定
+              誕生日フリーデイ設定
             </div>
             <div className="text-xs text-gray-600 mt-1 leading-relaxed">
-              暴食日ではなく、筋トレ出力と継続性を守る高炭水化物リフィードとして計画します。
-              誕生日当日は例外として、カロリーやPFCを気にせず楽しむフリーデイにします。
+              誕生日当日の1日だけ、カロリーやPFCを気にせず好きなものを楽しむ日として扱います。
+              通常日のリフィードや定期チートは作らない、かなり厳しめの設定です。
             </div>
           </div>
           <button
@@ -275,27 +271,14 @@ export default function ProfileForm({ initial }: Props) {
           </button>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium mb-2">頻度</label>
-          <div className="grid grid-cols-2 gap-2">
-            {(Object.keys(CHEAT_DAY_FREQUENCY_LABELS) as CheatDayFrequency[]).map(
-              (f) => (
-                <button
-                  key={f}
-                  type="button"
-                  onClick={() => setCheatDayFrequency(f)}
-                  disabled={!cheatDayEnabled}
-                  className={`min-h-11 rounded-xl border px-2 text-xs font-medium ${
-                    cheatDayEnabled && cheatDayFrequency === f
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-white border-gray-300 text-gray-700 disabled:opacity-50'
-                  }`}
-                >
-                  {CHEAT_DAY_FREQUENCY_LABELS[f]}
-                </button>
-              ),
-            )}
+        <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+          <div className="text-xs text-gray-500">許可日数</div>
+          <div className="mt-1 text-sm font-bold text-[#a3ff12]">
+            年1回・誕生日当日のみ
           </div>
+          <p className="mt-1 text-xs leading-relaxed text-slate-300">
+            この日以外は通常のカロリー/PFC目標を使います。
+          </p>
         </div>
 
         <div>

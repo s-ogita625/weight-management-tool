@@ -1,10 +1,10 @@
 import { calculate, type FormulaResult } from './calculations';
-import type { CheatDayFrequency, Profile } from './types';
+import type { Profile } from './types';
 
 export interface CheatDayPlan {
   enabled: boolean;
   goal: FormulaResult['goal'];
-  frequency: CheatDayFrequency;
+  frequency: 'event_only';
   frequencyLabel: string;
   intervalDays: number | null;
   nextDate: string | null;
@@ -20,20 +20,10 @@ export interface CheatDayPlan {
   isBirthdayFreeDay: boolean;
 }
 
-function round(v: number): number {
-  return Math.round(v);
-}
-
 function toISODate(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
     date.getDate(),
   ).padStart(2, '0')}`;
-}
-
-function addDays(date: Date, days: number): Date {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
 }
 
 function parseBirthday(mmdd?: string): { month: number; day: number } {
@@ -52,70 +42,6 @@ function nextBirthday(mmdd: string | undefined, today: Date): Date {
   const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   if (candidate < todayDate) candidate.setFullYear(candidate.getFullYear() + 1);
   return candidate;
-}
-
-function nextCycleDate(anchor: Date, today: Date, intervalDays: number): Date {
-  const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const next = new Date(anchor);
-  while (next < todayDate) next.setDate(next.getDate() + intervalDays);
-  while (next > todayDate) {
-    const previous = addDays(next, -intervalDays);
-    if (previous < todayDate) break;
-    next.setTime(previous.getTime());
-  }
-  return next;
-}
-
-function resolveFrequency(
-  profile: Profile,
-  goal: FormulaResult['goal'],
-  weeklyDeltaKg: number,
-): { frequency: CheatDayFrequency; intervalDays: number | null; label: string } {
-  const selected = profile.cheat_day_frequency ?? 'auto';
-  const bodyFatLean =
-    profile.gender === 'male'
-      ? Number(profile.body_fat_pct) <= 15
-      : Number(profile.body_fat_pct) <= 23;
-  const hardTraining =
-    profile.training_freq === '3-4' || profile.training_freq === '5+';
-  const deficitRate = Math.abs(weeklyDeltaKg) / Number(profile.current_weight_kg);
-
-  const automatic: CheatDayFrequency =
-    goal !== 'cut'
-      ? 'event_only'
-      : bodyFatLean || hardTraining || deficitRate >= 0.0075
-        ? 'weekly'
-        : 'biweekly';
-
-  const frequency = selected === 'auto' ? automatic : selected;
-  const intervalDays =
-    frequency === 'weekly'
-      ? 7
-      : frequency === 'biweekly'
-        ? 14
-        : frequency === 'monthly'
-          ? 28
-          : null;
-  const label =
-    selected === 'auto'
-      ? `自動: ${
-          frequency === 'weekly'
-            ? '週1回'
-            : frequency === 'biweekly'
-              ? '2週間に1回'
-              : frequency === 'monthly'
-                ? '月1回'
-                : 'イベント時のみ'
-        }`
-      : frequency === 'weekly'
-        ? '週1回'
-        : frequency === 'biweekly'
-          ? '2週間に1回'
-          : frequency === 'monthly'
-            ? '月1回'
-            : 'イベント時のみ';
-
-  return { frequency, intervalDays, label };
 }
 
 export function buildCheatDayPlan(profile: Profile, today = new Date()): CheatDayPlan {
@@ -138,74 +64,44 @@ export function buildCheatDayPlan(profile: Profile, today = new Date()): CheatDa
       ? result.katchMcArdle
       : result.mifflin;
   const birthday = nextBirthday(profile.birthday_mmdd, today);
-  const frequency = resolveFrequency(profile, recommended.goal, recommended.weeklyDeltaKg);
   const enabled = profile.cheat_day_enabled ?? true;
-  const refeedCalories =
-    recommended.goal === 'cut'
-      ? recommended.tdee
-      : Math.max(recommended.targetCalories, recommended.tdee);
-  const protein_g = recommended.protein_g;
-  const fat_g = Math.min(
-    recommended.fat_g,
-    round(
-      Math.max(
-        Number(profile.current_weight_kg) * 0.6,
-        (refeedCalories * 0.2) / 9,
-      ),
-    ),
-  );
-  const carbs_g = Math.max(
-    0,
-    round((refeedCalories - protein_g * 4 - fat_g * 9) / 4),
-  );
-  const nextDate = frequency.intervalDays
-    ? nextCycleDate(birthday, today, frequency.intervalDays)
-    : birthday;
-  const birthdayStart = addDays(birthday, -1);
-  const birthdayEnd = addDays(birthday, 1);
   const todayISO = toISODate(today);
   const birthdayISO = toISODate(birthday);
   const isBirthdayFreeDay = enabled && todayISO === birthdayISO;
-  const isBirthdayWindow = today >= birthdayStart && today <= birthdayEnd;
-  const isIntervalDay = frequency.intervalDays ? todayISO === toISODate(nextDate) : false;
   const isCut = recommended.goal === 'cut';
   const advice = isBirthdayFreeDay
     ? [
-        '誕生日当日はフリーデイです。カロリーやPFCの上限を気にせず、食べたいものを楽しんでください。',
+        '今日は誕生日フリーデイです。カロリーやPFCの上限を気にせず、食べたいものを楽しんでください。',
         '記録は「振り返り用」として残すだけでOKです。翌日から通常の目標に戻します。',
         'できれば水分と睡眠だけは確保し、翌日に極端な帳尻合わせはしないでください。',
       ]
     : isCut
       ? [
-          '通常のチートデイはメンテナンス付近まで。誕生日当日だけは例外としてフリーデイ扱いです。',
-          'タンパク質は通常日と同じ量を確保し、脂質を増やしすぎず炭水化物を中心に増やします。',
-          '停滞・疲労・筋トレ出力低下が強い場合は、1日リフィードより3〜7日のダイエットブレイクを優先します。',
+          'フリーデイは年1回、誕生日当日の1日のみに絞ります。通常日はカロリー/PFC目標を維持します。',
+          'この日は本当に好きなものを食べてOKです。翌日以降に極端な帳尻合わせはせず、通常運転へ戻します。',
+          '停滞・疲労・筋トレ出力低下が強い場合は、フリーデイ追加ではなく睡眠・水分・減量ペースを見直します。',
         ]
       : [
-          '維持・増量中は定期チートを増やす必要は低めです。イベント日に食事を楽しむ設定として扱います。',
-          '翌日以降に帳尻を極端に削らず、週平均のカロリーで調整します。',
+          '維持・増量中でもフリーデイは誕生日当日の1日のみです。普段は通常の食事目標を使います。',
+          '翌日以降に帳尻を極端に削らず、通常の記録と食事ペースに戻します。',
         ];
 
   return {
     enabled,
     goal: recommended.goal,
-    frequency: frequency.frequency,
-    frequencyLabel: frequency.label,
-    intervalDays: frequency.intervalDays,
-    nextDate: enabled ? toISODate(nextDate) : null,
+    frequency: 'event_only',
+    frequencyLabel: '年1回（誕生日当日のみ）',
+    intervalDays: null,
+    nextDate: enabled ? birthdayISO : null,
     birthdayDate: enabled ? toISODate(birthday) : null,
-    birthdayWindow: enabled ? `${birthdayISO} 当日（フリーデイ）` : null,
-    calories: round(refeedCalories),
-    protein_g: round(protein_g),
-    fat_g,
-    carbs_g,
-    title: isBirthdayFreeDay
-      ? '誕生日フリーデイ'
-      : recommended.goal === 'cut'
-        ? 'チートデイ（リフィード）'
-        : 'イベント食事枠',
+    birthdayWindow: enabled ? `${birthdayISO} の1日のみ（フリーデイ）` : null,
+    calories: 0,
+    protein_g: 0,
+    fat_g: 0,
+    carbs_g: 0,
+    title: '誕生日フリーデイ',
     advice,
-    isTodayCheatDay: enabled && (isBirthdayWindow || isIntervalDay),
+    isTodayCheatDay: isBirthdayFreeDay,
     isBirthdayFreeDay,
   };
 }
