@@ -61,9 +61,8 @@ export async function deleteHydrationAction(id: string) {
 
 function revalidateHydrationPaths() {
   revalidatePath('/');
-  revalidatePath('/log');
+  revalidatePath('/hydration');
   revalidatePath('/calendar');
   revalidatePath('/coach');
   revalidatePath('/chat');
 }
-

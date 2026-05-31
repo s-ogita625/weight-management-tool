@@ -291,7 +291,7 @@ export default async function Home() {
         </div>
       </ShortcutCard>
 
-      <ShortcutCard href="/log#hydration" title="水分補給を記録" icon={Droplets}>
+      <ShortcutCard href="/hydration" title="水分補給を記録" icon={Droplets}>
         <div className="grid grid-cols-3 gap-2 text-xs">
           <div>
             <div className="text-gray-500">合計</div>
