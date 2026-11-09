@@ -3,32 +3,7 @@
 import { redirect } from 'next/navigation';
 import { getSessionUserId } from '@/lib/auth';
 import { sql } from '@/lib/db';
-import { pushConfigured, sendPushToUser } from '@/lib/push';
-
-/**
- * サーバーから送信先に HTTP リクエストを送るため、既知のプッシュサービス以外は受け付けない（SSRF 対策）
- */
-const PUSH_HOST_SUFFIXES = [
-  'fcm.googleapis.com',
-  'android.googleapis.com',
-  'updates.push.services.mozilla.com',
-  'push.services.mozilla.com',
-  'notify.windows.com',
-  'push.apple.com',
-];
-
-function isAllowedPushEndpoint(endpoint: string): boolean {
-  if (endpoint.length > 1000) return false;
-  let url: URL;
-  try {
-    url = new URL(endpoint);
-  } catch {
-    return false;
-  }
-  if (url.protocol !== 'https:' || url.port !== '' || url.username || url.password) return false;
-  const host = url.hostname.toLowerCase();
-  return PUSH_HOST_SUFFIXES.some((suffix) => host === suffix || host.endsWith(`.${suffix}`));
-}
+import { isAllowedPushEndpoint, pushConfigured, sendPushToUser } from '@/lib/push';
 
 interface SerializedSubscription {
   endpoint: string;

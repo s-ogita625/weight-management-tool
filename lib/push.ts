@@ -10,6 +10,32 @@ export interface PushPayload {
   tag?: string;
 }
 
+/**
+ * サーバーから送信先に HTTP リクエストを送るため、既知のプッシュサービス以外には送らない（SSRF 対策）。
+ * 登録時と送信時の両方でチェックする。
+ */
+const PUSH_HOST_SUFFIXES = [
+  'fcm.googleapis.com',
+  'android.googleapis.com',
+  'updates.push.services.mozilla.com',
+  'push.services.mozilla.com',
+  'notify.windows.com',
+  'push.apple.com',
+];
+
+export function isAllowedPushEndpoint(endpoint: string): boolean {
+  if (typeof endpoint !== 'string' || endpoint.length > 1000) return false;
+  let url: URL;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'https:' || url.port !== '' || url.username || url.password) return false;
+  const host = url.hostname.toLowerCase();
+  return PUSH_HOST_SUFFIXES.some((suffix) => host === suffix || host.endsWith(`.${suffix}`));
+}
+
 let configured = false;
 
 export function pushConfigured(): boolean {
@@ -35,8 +61,10 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
   `) as unknown as Array<{ id: string; endpoint: string; p256dh: string; auth: string }>;
   let sent = 0;
   for (const s of subs) {
-    // 念のため送信時にも https のみ許可（登録時に既知のプッシュサービスへ制限済み）
-    if (!s.endpoint.startsWith('https://')) continue;
+    if (!isAllowedPushEndpoint(s.endpoint)) {
+      await sql`delete from push_subscriptions where id = ${s.id}`;
+      continue;
+    }
     try {
       await webpush.sendNotification(
         { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
