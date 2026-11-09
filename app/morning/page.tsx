@@ -25,14 +25,26 @@ export default async function MorningPage() {
 
   const initial = rows[0] ?? null;
 
+  const prevRows = (await sql`
+    select to_char(date, 'YYYY-MM-DD') as date,
+           sleep_hours, sleep_quality, fatigue, mood, bowel
+    from daily_logs
+    where user_id = ${userId} and date < ${today}
+      and (sleep_hours is not null or sleep_quality is not null
+           or fatigue is not null or mood is not null)
+    order by date desc
+    limit 1
+  `) as unknown as DailyLog[];
+  const previous = prevRows[0] ?? null;
+
   return (
     <div className="py-4 space-y-4">
       <h1 className="text-2xl font-bold">朝の記録</h1>
       <p className="text-sm text-gray-600">
-        起床後すぐに、体重・体脂肪率と今日のコンディションを記録しましょう。
+        体重だけでもOK。体調がいつも通りなら下のボタンで前回の内容をコピーできます。
         {initial ? ' （本日分は更新します）' : ''}
       </p>
-      <DailyLogForm initial={initial} />
+      <DailyLogForm initial={initial} previous={previous} />
     </div>
   );
 }

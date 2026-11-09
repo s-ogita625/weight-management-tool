@@ -3,25 +3,29 @@ import { redirect } from 'next/navigation';
 import {
   BarChart3,
   Bot,
-  CalendarDays,
-  Droplets,
   Dumbbell,
-  History,
-  MessageCircle,
-  Settings,
   TrendingUp,
   Utensils,
   Zap,
   type LucideIcon,
 } from 'lucide-react';
+import QuickMeals, { type MealSetView, type TodayMeal } from '@/components/home/QuickMeals';
+import WaterQuick from '@/components/home/WaterQuick';
+import WeightQuickCard from '@/components/home/WeightQuickCard';
+import WeightTrendMini, { type WeightPoint } from '@/components/home/WeightTrendMini';
+import WorkoutQuick, { type WorkoutTemplateView } from '@/components/home/WorkoutQuick';
+import type { QuickMealItem } from '@/app/actions/quick';
 import { getSessionUserId } from '@/lib/auth';
 import { calculate } from '@/lib/calculations';
 import { buildCheatDayPlan } from '@/lib/cheat-day';
-import { dateInJST } from '@/lib/date';
+import { dateInJST, timeInJST } from '@/lib/date';
 import { sql } from '@/lib/db';
 import { pickFunComparisons } from '@/lib/fun-foods';
-import { getWorkoutStats } from '@/lib/workouts';
-import type { DailyLog, MealLog, Profile } from '@/lib/types';
+import { inferMealType } from '@/lib/meal-time';
+import { addDays, daysBetween } from '@/lib/stats';
+import { buildSplitTemplates } from '@/lib/workout-templates';
+import { getWorkoutSessions, getWorkoutStats } from '@/lib/workouts';
+import type { DailyLog, MealType, Profile } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -47,7 +51,7 @@ export default async function Home() {
 
         <div className="my-6 grid grid-cols-2 gap-2">
           <FeatureTile icon={BarChart3} label="科学的PFC" />
-          <FeatureTile icon={Utensils} label="食事ごと記録" />
+          <FeatureTile icon={Utensils} label="ワンタップ食事記録" />
           <FeatureTile icon={TrendingUp} label="体重推移" />
           <FeatureTile icon={Bot} label="AIコーチ" />
           <FeatureTile icon={Dumbbell} label="筋トレ記録" />
@@ -73,50 +77,137 @@ export default async function Home() {
   }
 
   const today = dateInJST();
+  const currentMealType = inferMealType(timeInJST());
 
-  // 4 つのデータ取得を並列実行（neon HTTP は 1 SQL = 1 リクエストなので並列化が効く）
   const [
     profileRowsRaw,
-    morningRowsRaw,
+    weightRowsRaw,
+    todayLogRaw,
     mealRowsRaw,
     hydrationRowsRaw,
+    frequentRaw,
+    setsRaw,
     workoutStats,
-  ] =
-    await Promise.all([
-      sql`select * from profiles where user_id = ${userId} limit 1`,
-      sql`
-        select id, user_id, to_char(date, 'YYYY-MM-DD') as date,
-               weight_kg, body_fat_pct, sleep_hours, sleep_quality, fatigue, mood, bowel
-        from daily_logs
-        where user_id = ${userId} and date = ${today}
-        limit 1
-      `,
-      sql`
-        select calories, protein_g, fat_g, carbs_g
+    workoutSessions,
+  ] = await Promise.all([
+    sql`select * from profiles where user_id = ${userId} limit 1`,
+    sql`
+      select to_char(date, 'YYYY-MM-DD') as date, weight_kg::float as weight
+      from daily_logs
+      where user_id = ${userId} and weight_kg is not null
+      order by date desc
+      limit 60
+    `,
+    sql`
+      select to_char(date, 'YYYY-MM-DD') as date, weight_kg, sleep_hours, sleep_quality, fatigue, mood
+      from daily_logs
+      where user_id = ${userId} and date = ${today}
+      limit 1
+    `,
+    sql`
+      select id, to_char(time, 'HH24:MI') as time, meal_type, food_name,
+             calories::float as calories, protein_g::float as protein_g,
+             fat_g::float as fat_g, carbs_g::float as carbs_g
+      from meal_logs
+      where user_id = ${userId} and date = ${today}
+      order by time nulls last, created_at
+    `,
+    sql`
+      select coalesce(sum(amount_ml), 0)::int as total
+      from hydration_logs
+      where user_id = ${userId} and date = ${today}
+    `,
+    // よく食べるメニュー：回数 + 今の時間帯（朝食など）での回数を重み付けして並べる
+    sql`
+      with base as (
+        select food_name, meal_type, calories, protein_g, fat_g, carbs_g, date, created_at
         from meal_logs
-        where user_id = ${userId} and date = ${today}
-      `,
-      sql`
-        select drink_type, amount_ml
-        from hydration_logs
-        where user_id = ${userId} and date = ${today}
-      `,
-      getWorkoutStats(userId),
-    ]);
+        where user_id = ${userId} and food_name is not null and food_name <> ''
+      ),
+      latest as (
+        select distinct on (food_name)
+          food_name, calories::float as calories, protein_g::float as protein_g,
+          fat_g::float as fat_g, carbs_g::float as carbs_g
+        from base
+        order by food_name, date desc, created_at desc
+      ),
+      agg as (
+        select food_name,
+               count(*)::int as uses,
+               count(*) filter (where meal_type = ${currentMealType})::int as type_uses,
+               max(date) as last_date
+        from base
+        group by food_name
+      )
+      select l.*
+      from latest l join agg a using (food_name)
+      order by (a.uses + a.type_uses * 3) desc, a.last_date desc
+      limit 10
+    `,
+    sql`
+      select id, name, meal_type, items
+      from meal_sets
+      where user_id = ${userId}
+      order by (meal_type = ${currentMealType}) desc nulls last, created_at
+    `.catch(() => []), // マイグレーション未適用でもホームは表示する
+    getWorkoutStats(userId),
+    getWorkoutSessions(userId, 60),
+  ]);
 
   const profileRows = profileRowsRaw as unknown as Profile[];
   if (profileRows.length === 0) redirect('/onboarding');
   const profile = profileRows[0];
 
-  const morningRows = morningRowsRaw as unknown as DailyLog[];
-  const morning = morningRows[0] ?? null;
+  // ---------- 体重 ----------
+  const weightsDesc = weightRowsRaw as unknown as Array<{ date: string; weight: number }>;
+  const weights = [...weightsDesc].reverse();
+  // カレンダー上の7日間（記録がある日だけ）で移動平均を出す
+  const points: WeightPoint[] = weights.map((w) => {
+    const from = addDays(w.date, -6);
+    const window = weights.filter((x) => x.date >= from && x.date <= w.date);
+    const ma = window.reduce((s, x) => s + x.weight, 0) / window.length;
+    return { date: w.date, weight: w.weight, ma7: Math.round(ma * 100) / 100 };
+  });
+  const latestPoint = points.at(-1) ?? null;
+  // 1週間前の比較対象は 7〜10日前の記録に限る（記録が空いた後の再開時に古いデータと比べない）
+  const weekAgoPoint = latestPoint
+    ? [...points]
+        .reverse()
+        .find(
+          (p) =>
+            p.date <= addDays(latestPoint.date, -7) &&
+            p.date >= addDays(latestPoint.date, -10),
+        ) ?? null
+    : null;
+  // グラフは直近60日分だけ（長いブランクで横軸が潰れないように）
+  const chartPoints = latestPoint
+    ? points.filter((p) => p.date >= addDays(latestPoint.date, -60))
+    : [];
+  const ma7WeeklyDelta =
+    latestPoint && weekAgoPoint
+      ? Math.round((latestPoint.ma7 - weekAgoPoint.ma7) * 10) / 10
+      : null;
 
-  const mealRows = mealRowsRaw as unknown as MealLog[];
-  const hydrationRows = hydrationRowsRaw as unknown as Array<{
-    drink_type: string;
-    amount_ml: number;
-  }>;
-  const mealTotal = mealRows.reduce(
+  const todayLog = (todayLogRaw as unknown as DailyLog[])[0] ?? null;
+  const todayWeight =
+    todayLog?.weight_kg !== null && todayLog?.weight_kg !== undefined
+      ? Number(todayLog.weight_kg)
+      : null;
+  const hasCondition = Boolean(
+    todayLog &&
+      (todayLog.sleep_hours !== null ||
+        todayLog.sleep_quality !== null ||
+        todayLog.fatigue !== null ||
+        todayLog.mood !== null),
+  );
+  const lastLogDate = weightsDesc[0]?.date ?? null;
+  const daysSinceLastLog = lastLogDate ? daysBetween(lastLogDate, today) : null;
+
+  // ---------- 食事 ----------
+  const meals = mealRowsRaw as unknown as Array<
+    TodayMeal & { protein_g: number; fat_g: number; carbs_g: number }
+  >;
+  const mealTotal = meals.reduce(
     (a, r) => ({
       calories: a.calories + Number(r.calories),
       protein_g: a.protein_g + Number(r.protein_g),
@@ -125,21 +216,16 @@ export default async function Home() {
     }),
     { calories: 0, protein_g: 0, fat_g: 0, carbs_g: 0 },
   );
-  const hydrationTotal = hydrationRows.reduce(
-    (sum, row) => sum + Number(row.amount_ml),
-    0,
-  );
-  const waterTotal = hydrationRows
-    .filter((row) => row.drink_type === 'water')
-    .reduce((sum, row) => sum + Number(row.amount_ml), 0);
-  const proteinDrinkTotal = hydrationRows
-    .filter((row) => row.drink_type === 'protein')
-    .reduce((sum, row) => sum + Number(row.amount_ml), 0);
-  const coffeeTotal = hydrationRows
-    .filter((row) => row.drink_type === 'coffee')
-    .reduce((sum, row) => sum + Number(row.amount_ml), 0);
+  const typeCounts = new Map<MealType, number>();
+  for (const m of meals) {
+    if (m.meal_type && m.food_name) {
+      typeCounts.set(m.meal_type, (typeCounts.get(m.meal_type) ?? 0) + 1);
+    }
+  }
+  const savableTypes = [...typeCounts.entries()]
+    .filter(([, n]) => n >= 2)
+    .map(([t]) => t);
 
-  // 1日の目標カロリーを算出（リーンカット設定込み）
   const calcResult = calculate({
     heightCm: Number(profile.height_cm),
     weightKg: Number(profile.current_weight_kg),
@@ -153,299 +239,185 @@ export default async function Home() {
     leanCutMode: profile.lean_cut_mode,
     priority: profile.priority,
   });
-  const dailyPlan =
+  const plan =
     calcResult.recommendedFormula === 'katchMcArdle'
       ? calcResult.katchMcArdle
       : calcResult.mifflin;
   const cheatDayPlan = buildCheatDayPlan(profile);
   const isFreeDay = cheatDayPlan.isTodayCheatDay;
-  const targetPlan = dailyPlan;
-  const remainingKcal = isFreeDay
-    ? 0
-    : Math.max(0, targetPlan.targetCalories - mealTotal.calories);
-  const overKcal = isFreeDay
-    ? 0
-    : Math.max(0, mealTotal.calories - targetPlan.targetCalories);
-  // ホームでは1日固定 seed で1つだけ食材例を表示（軽量）
-  const todaySeed =
-    new Date().getFullYear() * 10000 +
-    (new Date().getMonth() + 1) * 100 +
-    new Date().getDate();
-  const funExamples = pickFunComparisons(
+  const remainingKcal = Math.max(0, plan.targetCalories - mealTotal.calories);
+  const overKcal = Math.max(0, mealTotal.calories - plan.targetCalories);
+  const funExample = pickFunComparisons(
     overKcal > 0 ? overKcal : remainingKcal,
     1,
-    todaySeed,
+    Number(today.replaceAll('-', '')),
+  )[0];
+
+  // ---------- 筋トレ ----------
+  const templates: WorkoutTemplateView[] = buildSplitTemplates(workoutSessions)
+    .slice(0, 4)
+    .map((t) => ({
+      key: t.key,
+      label: t.label,
+      sessionId: t.session.id,
+      date: t.session.date,
+      exerciseCount: t.session.exercises.length,
+      setCount: t.session.totalSets,
+      daysAgo: daysBetween(t.session.date, today),
+    }));
+  const todaySessions = buildSplitTemplates(
+    workoutSessions.filter((s) => s.date === today),
+  ).map((t) => ({ label: t.label, setCount: t.session.totalSets }));
+
+  const hydrationTotal = Number(
+    (hydrationRowsRaw as unknown as Array<{ total: number }>)[0]?.total ?? 0,
   );
 
   return (
-    <div className="space-y-5 py-4">
-      <div className="sport-card-strong overflow-hidden p-5">
-        <div className="flex items-start justify-between gap-4">
+    <div className="space-y-4 py-4">
+      {/* ヘッダー：今日のカロリー */}
+      <div className="sport-card-strong p-4">
+        <div className="flex items-baseline justify-between">
           <div>
-            <div className="sport-kicker">Daily dashboard</div>
-            <h1 className="mt-1 text-3xl font-black leading-tight">
-              今日のサマリー
-            </h1>
-            <p className="mt-1 text-sm text-slate-300">{today}</p>
+            <div className="sport-kicker">Today</div>
+            <h1 className="text-xl font-black">{formatJaDate(today)}</h1>
           </div>
-          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-black/25 text-[#a3ff12] ring-1 ring-white/10">
-            <Zap size={25} strokeWidth={2.6} />
-          </div>
+          <Link href="/plan" className="text-xs text-slate-400 underline-offset-2 hover:underline">
+            目標 {Number(profile.target_weight_kg).toFixed(1)}kg / {Number(profile.target_body_fat_pct).toFixed(0)}%
+          </Link>
         </div>
-        <div className="mt-5 grid grid-cols-3 gap-2 text-center">
-          <HeroMetric label="摂取" value={Math.round(mealTotal.calories).toLocaleString()} unit="kcal" />
-          <HeroMetric
-            label="目標"
-            value={isFreeDay ? 'FREE' : Math.round(targetPlan.targetCalories).toLocaleString()}
-            unit={isFreeDay ? 'free day' : 'kcal'}
-            tone={isFreeDay ? 'success' : 'neutral'}
-          />
-          <HeroMetric
-            label={isFreeDay ? '今日は' : '残り'}
-            value={isFreeDay ? 'ENJOY' : Math.round(overKcal > 0 ? overKcal : remainingKcal).toLocaleString()}
-            unit={isFreeDay ? 'no limit' : 'kcal'}
-            tone={overKcal > 0 ? 'danger' : 'success'}
-          />
-        </div>
-      </div>
 
-      {/* 朝の記録カード */}
-      <ShortcutCard
-        href="/morning"
-        title={morning ? '朝の記録 ✓' : '朝の記録を入力'}
-        icon={Dumbbell}
-        tone={morning ? 'success' : 'warning'}
-      >
-        {morning ? (
-          <div className="text-sm text-gray-700 space-y-0.5">
-            {morning.weight_kg !== null && (
-              <div>
-                体重:{' '}
-                <span className="font-semibold tabular-nums">
-                  {Number(morning.weight_kg).toFixed(1)}kg
-                </span>
-              </div>
-            )}
-            {morning.body_fat_pct !== null && (
-              <div>
-                体脂肪:{' '}
-                <span className="font-semibold tabular-nums">
-                  {Number(morning.body_fat_pct).toFixed(1)}%
-                </span>
-              </div>
-            )}
-            {morning.sleep_hours !== null && (
-              <div>
-                睡眠:{' '}
-                <span className="font-semibold tabular-nums">
-                  {Number(morning.sleep_hours).toFixed(1)}h
-                </span>
-              </div>
-            )}
+        {isFreeDay ? (
+          <div className="mt-3 rounded-lg bg-[#a3ff12]/10 px-3 py-2 text-sm font-bold text-[#a3ff12]">
+            🎂 {cheatDayPlan.currentFreeDayLabel ?? 'フリーデイ'}：今日は好きなものを楽しむ日です
           </div>
         ) : (
-          <div className="text-sm text-gray-700">
-            体重・体脂肪率・コンディションを記録しましょう
-          </div>
+          <>
+            <div className="mt-3 flex items-end justify-between">
+              <div>
+                <div className="text-[11px] text-slate-400">
+                  {overKcal > 0 ? 'オーバー' : '残り'}
+                </div>
+                <div
+                  className={`text-4xl font-black tabular-nums ${
+                    overKcal > 0 ? 'text-rose-300' : 'text-[#a3ff12]'
+                  }`}
+                >
+                  {Math.round(overKcal > 0 ? overKcal : remainingKcal).toLocaleString()}
+                  <span className="ml-1 text-sm font-semibold text-slate-400">kcal</span>
+                </div>
+                {funExample && (
+                  <div className="text-[11px] text-slate-500">≒ {funExample.display}</div>
+                )}
+              </div>
+              <div className="text-right text-xs tabular-nums text-slate-400">
+                {Math.round(mealTotal.calories).toLocaleString()} /{' '}
+                {Math.round(plan.targetCalories).toLocaleString()} kcal
+              </div>
+            </div>
+            <ProgressBar value={mealTotal.calories} max={plan.targetCalories} />
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              <Macro label="P" value={mealTotal.protein_g} target={plan.protein_g} color="#a3ff12" />
+              <Macro label="F" value={mealTotal.fat_g} target={plan.fat_g} color="#fbbf24" />
+              <Macro label="C" value={mealTotal.carbs_g} target={plan.carbs_g} color="#20e0ff" />
+            </div>
+          </>
         )}
-      </ShortcutCard>
-
-      {/* 食事サマリー */}
-      <ShortcutCard
-        href="/log"
-        title="食事を記録"
-        icon={Utensils}
-      >
-        <div className="text-sm text-gray-700">
-          <div className="text-lg font-bold tabular-nums">
-            {Math.round(mealTotal.calories).toLocaleString()} kcal
-            <span className="text-xs font-normal text-gray-500 ml-1">
-              / {Math.round(targetPlan.targetCalories).toLocaleString()} 目標 ({mealRows.length}件)
-            </span>
-          </div>
-          <div className="text-xs text-gray-600">
-            {isFreeDay
-              ? `P${Math.round(mealTotal.protein_g)} F${Math.round(mealTotal.fat_g)} C${Math.round(mealTotal.carbs_g)}（今日は目標判定なし）`
-              : `P${Math.round(mealTotal.protein_g)}/${Math.round(targetPlan.protein_g)} F${Math.round(mealTotal.fat_g)}/${Math.round(targetPlan.fat_g)} C${Math.round(mealTotal.carbs_g)}/${Math.round(targetPlan.carbs_g)}`}
-          </div>
-          <div
-            className={`mt-1.5 text-xs font-medium ${
-              overKcal > 0
-                ? 'text-rose-600'
-                : remainingKcal < 200
-                  ? 'text-amber-600'
-                  : 'text-emerald-600'
-            }`}
-          >
-            {isFreeDay
-              ? `🎂 ${cheatDayPlan.currentFreeDayLabel ?? 'フリーデイ'}。今日は好きなものを楽しむ日です`
-              : overKcal > 0
-              ? `🚨 ${Math.round(overKcal)}kcal オーバー`
-              : `🔥 残り ${Math.round(remainingKcal)}kcal`}
-            {funExamples.length > 0 && remainingKcal > 0 && overKcal === 0 && !isFreeDay && (
-              <span className="text-gray-500 font-normal ml-1">
-                = {funExamples[0].display}
-              </span>
-            )}
-          </div>
-        </div>
-      </ShortcutCard>
-
-      <ShortcutCard href="/hydration" title="水分補給を記録" icon={Droplets}>
-        <div className="grid grid-cols-3 gap-2 text-xs">
-          <div>
-            <div className="text-gray-500">合計</div>
-            <div className="font-semibold tabular-nums text-[#20e0ff]">
-              {(hydrationTotal / 1000).toFixed(1)}L
-            </div>
-          </div>
-          <div>
-            <div className="text-gray-500">水</div>
-            <div className="font-semibold tabular-nums text-[#a3ff12]">
-              {waterTotal}ml
-            </div>
-          </div>
-          <div>
-            <div className="text-gray-500">コーヒー</div>
-            <div className="font-semibold tabular-nums text-amber-200">
-              {coffeeTotal}ml
-            </div>
-          </div>
-        </div>
-        {proteinDrinkTotal > 0 && (
-          <div className="mt-2 text-xs text-slate-400">
-            プロテイン飲料 {proteinDrinkTotal}ml も記録済み
-          </div>
-        )}
-      </ShortcutCard>
-
-      <ShortcutCard href="/plan" title={cheatDayPlan.title} icon={Zap}>
-        <div className="grid grid-cols-2 gap-2 text-xs">
-          <div>
-            <div className="text-gray-500">次回目安</div>
-            <div className="font-semibold tabular-nums text-[#a3ff12]">
-              {cheatDayPlan.nextDate ?? '-'}
-            </div>
-          </div>
-          <div>
-            <div className="text-gray-500">当日</div>
-            <div className="font-semibold tabular-nums text-[#20e0ff]">
-              上限なし
-            </div>
-          </div>
-        </div>
-      </ShortcutCard>
-
-      {/* 筋トレサマリー */}
-      <ShortcutCard
-        href="/workout"
-        title="筋トレを記録"
-        icon={Dumbbell}
-      >
-        <div className="grid grid-cols-3 gap-2 text-xs">
-          <div>
-            <div className="text-gray-500">今週</div>
-            <div className="font-semibold tabular-nums text-[#a3ff12]">
-              {workoutStats.sessionsThisWeek}回
-            </div>
-          </div>
-          <div>
-            <div className="text-gray-500">セット</div>
-            <div className="font-semibold tabular-nums text-[#20e0ff]">
-              {workoutStats.setsThisWeek}set
-            </div>
-          </div>
-          <div>
-            <div className="text-gray-500">休息</div>
-            <div className="font-semibold tabular-nums text-slate-200">
-              {workoutStats.restDays === null ? '-' : `${workoutStats.restDays}日`}
-            </div>
-          </div>
-        </div>
-      </ShortcutCard>
-
-      {/* クイックリンク */}
-      <div>
-        <h2 className="mb-2 text-sm font-semibold text-slate-200">
-          クイックリンク
-        </h2>
-        <div className="grid grid-cols-2 gap-2">
-          <QuickLink href="/plan" icon={BarChart3} label="食事プラン" />
-          <QuickLink href="/calendar" icon={CalendarDays} label="カレンダー" />
-          <QuickLink href="/trend" icon={TrendingUp} label="体重推移" />
-          <QuickLink href="/workout" icon={Dumbbell} label="筋トレメモ" />
-          <QuickLink href="/history" icon={History} label="食事履歴" />
-          <QuickLink href="/coach" icon={Bot} label="AIコーチング" />
-          <QuickLink href="/chat" icon={MessageCircle} label="AIチャット" />
-          <QuickLink href="/onboarding" icon={Settings} label="プロフィール" />
-        </div>
       </div>
 
-      <div className="text-xs text-gray-500 text-center">
-        現在の目標: {Number(profile.target_weight_kg).toFixed(1)}kg /
-        体脂肪{Number(profile.target_body_fat_pct).toFixed(1)}%
-      </div>
+      {daysSinceLastLog !== null && daysSinceLastLog > 3 && todayWeight === null && (
+        <div className="rounded-lg border border-amber-300/35 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
+          前回の記録から <b>{daysSinceLastLog}日</b> 空いています。まずは体重だけでもOK、今日から再開しましょう。
+        </div>
+      )}
+
+      <WeightQuickCard
+        todayWeight={todayWeight}
+        lastWeight={weightsDesc[0]?.weight ?? Number(profile.current_weight_kg)}
+        hasCondition={hasCondition}
+        recentlyLogged={daysSinceLastLog !== null && daysSinceLastLog <= 7}
+        ma7={latestPoint?.ma7 ?? null}
+        ma7WeeklyDelta={ma7WeeklyDelta}
+      />
+
+      <WeightTrendMini
+        points={chartPoints}
+        targetWeight={Number(profile.target_weight_kg)}
+      />
+
+      <QuickMeals
+        frequent={frequentRaw as unknown as QuickMealItem[]}
+        sets={setsRaw as unknown as MealSetView[]}
+        today={meals}
+        currentMealType={currentMealType}
+        savableTypes={savableTypes}
+      />
+
+      <WaterQuick totalMl={hydrationTotal} />
+
+      <WorkoutQuick
+        templates={templates}
+        todaySessions={todaySessions}
+        sessionsThisWeek={workoutStats.sessionsThisWeek}
+      />
+
+      {!isFreeDay && cheatDayPlan.nextDate && (
+        <Link
+          href="/calendar"
+          className="block text-center text-xs text-slate-500 underline-offset-2 hover:underline"
+        >
+          次のフリーデイ：{cheatDayPlan.nextDate}
+        </Link>
+      )}
     </div>
   );
 }
 
-function ShortcutCard({
-  href,
-  title,
-  icon: Icon,
-  tone = 'neutral',
-  children,
-}: {
-  href: string;
-  title: string;
-  icon: LucideIcon;
-  tone?: 'neutral' | 'success' | 'warning';
-  children: React.ReactNode;
-}) {
-  const toneClass =
-    tone === 'success'
-      ? 'border-emerald-300/35 bg-emerald-400/10'
-      : tone === 'warning'
-        ? 'border-amber-300/35 bg-amber-400/10'
-        : 'border-white/10 bg-white/[0.035]';
+function formatJaDate(iso: string): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  const w = ['日', '月', '火', '水', '木', '金', '土'][d.getUTCDay()];
+  return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日（${w}）`;
+}
+
+function ProgressBar({ value, max }: { value: number; max: number }) {
+  const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
+  const over = value > max;
   return (
-    <Link
-      href={href}
-      className={`block rounded-lg border p-4 transition active:scale-[0.99] ${toneClass}`}
-    >
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-sm font-bold text-white">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-black/25 text-[#a3ff12] ring-1 ring-white/10">
-            <Icon size={17} />
-          </span>
-          {title}
-        </div>
-        <span className="text-[#a3ff12]">→</span>
-      </div>
-      {children}
-    </Link>
+    <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
+      <div
+        className={`h-full rounded-full ${over ? 'bg-rose-400' : 'bg-[#a3ff12]'}`}
+        style={{ width: `${pct}%` }}
+      />
+    </div>
   );
 }
 
-function QuickLink({
-  href,
-  icon: Icon,
+function Macro({
   label,
+  value,
+  target,
+  color,
 }: {
-  href: string;
-  icon: LucideIcon;
   label: string;
+  value: number;
+  target: number;
+  color: string;
 }) {
+  const pct = target > 0 ? Math.min(100, (value / target) * 100) : 0;
   return (
-    <Link
-      href={href}
-      className="sport-card flex items-center gap-3 p-3 transition hover:border-[#a3ff12]/50 active:scale-[0.99]"
-    >
-      <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#a3ff12]/10 text-[#a3ff12]">
-        <Icon size={18} />
-      </span>
-      <span className="text-sm font-semibold">{label}</span>
-    </Link>
+    <div>
+      <div className="flex items-baseline justify-between text-[11px] tabular-nums">
+        <span className="font-bold" style={{ color }}>
+          {label}
+        </span>
+        <span className="text-slate-400">
+          {Math.round(value)}/{Math.round(target)}g
+        </span>
+      </div>
+      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
+        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
+      </div>
+    </div>
   );
 }
 
@@ -454,34 +426,6 @@ function FeatureTile({ icon: Icon, label }: { icon: LucideIcon; label: string })
     <div className="sport-card flex items-center gap-2 p-3">
       <Icon size={17} className="text-[#a3ff12]" />
       <span className="text-xs font-semibold text-slate-200">{label}</span>
-    </div>
-  );
-}
-
-function HeroMetric({
-  label,
-  value,
-  unit,
-  tone = 'neutral',
-}: {
-  label: string;
-  value: string;
-  unit: string;
-  tone?: 'neutral' | 'success' | 'danger';
-}) {
-  const color =
-    tone === 'success'
-      ? 'text-[#a3ff12]'
-      : tone === 'danger'
-        ? 'text-rose-300'
-        : 'text-white';
-  return (
-    <div className="rounded-lg border border-white/10 bg-black/20 p-2">
-      <div className="text-[10px] font-semibold text-slate-400">{label}</div>
-      <div className={`text-base font-black tabular-nums ${color}`}>
-        {value}
-      </div>
-      <div className="text-[10px] text-slate-500">{unit}</div>
     </div>
   );
 }

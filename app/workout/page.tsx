@@ -6,18 +6,23 @@ import { getWorkoutSessions, getWorkoutStats } from '@/lib/workouts';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export default async function WorkoutPage() {
+export default async function WorkoutPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ copy?: string }>;
+}) {
   const userId = await getSessionUserId();
   if (!userId) redirect('/login');
 
-  const [sessions, stats] = await Promise.all([
+  const [{ copy }, sessions, stats] = await Promise.all([
+    searchParams,
     getWorkoutSessions(userId, 120),
     getWorkoutStats(userId),
   ]);
 
   return (
     <div className="py-4">
-      <WorkoutView sessions={sessions} stats={stats} />
+      <WorkoutView sessions={sessions} stats={stats} initialCopyKey={copy ?? null} />
     </div>
   );
 }
