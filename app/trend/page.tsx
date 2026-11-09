@@ -1,5 +1,7 @@
 import { redirect } from 'next/navigation';
+import SleepInsightCard from '@/components/trend/SleepInsightCard';
 import TrendView from '@/components/trend/TrendView';
+import { sleepAnalysis } from '@/lib/insights';
 import { getSessionUserId } from '@/lib/auth';
 import { sql } from '@/lib/db';
 import type { DailyLog, Profile } from '@/lib/types';
@@ -42,7 +44,20 @@ export default async function TrendPage() {
           まだ記録がありません。朝の記録ページから入力してください。
         </p>
       ) : (
-        <TrendView logs={logs} profile={profile} />
+        <>
+          <TrendView logs={logs} profile={profile} />
+          <SleepInsightCard
+            analysis={sleepAnalysis(
+              logs.map((l) => ({
+                date: l.date,
+                weight: l.weight_kg === null ? null : Number(l.weight_kg),
+                sleep_hours: l.sleep_hours === null ? null : Number(l.sleep_hours),
+                mood: l.mood,
+                fatigue: l.fatigue,
+              })),
+            )}
+          />
+        </>
       )}
     </div>
   );

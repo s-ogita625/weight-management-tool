@@ -16,7 +16,24 @@ import WeightTrendMini, { type WeightPoint } from '@/components/home/WeightTrend
 import WorkoutQuick, { type WorkoutTemplateView } from '@/components/home/WorkoutQuick';
 import type { QuickMealItem } from '@/app/actions/quick';
 import { getSessionUserId } from '@/lib/auth';
-import { calculate } from '@/lib/calculations';
+import { GoalCheckCard, InsightList, WeeklyReportCard } from '@/components/home/InsightsPanel';
+import { calculate, PERIOD_WEEKS } from '@/lib/calculations';
+import {
+  findRecentPRs,
+  buildBodyPartBalance,
+  buildExerciseHistories,
+} from '@/lib/workout-analysis';
+import {
+  goalCheck,
+  plateauInsight,
+  refeedRecoveryInsight,
+  reminderInsight,
+  weeklyReport,
+  workoutInsights,
+  type DayCondition,
+  type Insight,
+  type MealDay,
+} from '@/lib/insights';
 import { buildCheatDayPlan } from '@/lib/cheat-day';
 import { dateInJST, timeInJST } from '@/lib/date';
 import { sql } from '@/lib/db';
@@ -89,6 +106,8 @@ export default async function Home() {
     setsRaw,
     workoutStats,
     workoutSessions,
+    conditionsRaw,
+    mealDaysRaw,
   ] = await Promise.all([
     sql`select * from profiles where user_id = ${userId} limit 1`,
     sql`
@@ -123,6 +142,7 @@ export default async function Home() {
         select food_name, meal_type, calories, protein_g, fat_g, carbs_g, date, created_at
         from meal_logs
         where user_id = ${userId} and food_name is not null and food_name <> ''
+          and food_name not like 'ざっくり記録%'
       ),
       latest as (
         select distinct on (food_name)
@@ -152,6 +172,22 @@ export default async function Home() {
     `.catch(() => []), // マイグレーション未適用でもホームは表示する
     getWorkoutStats(userId),
     getWorkoutSessions(userId, 60),
+    sql`
+      select to_char(date, 'YYYY-MM-DD') as date, weight_kg::float as weight,
+             sleep_hours::float as sleep_hours, mood, fatigue
+      from daily_logs
+      where user_id = ${userId}
+      order by date desc
+      limit 120
+    `,
+    sql`
+      select to_char(date, 'YYYY-MM-DD') as date,
+             sum(calories)::float as kcal, sum(protein_g)::float as protein,
+             count(*)::int as entries
+      from meal_logs
+      where user_id = ${userId} and date >= ${addDays(today, -14)}
+      group by date
+    `,
   ]);
 
   const profileRows = profileRowsRaw as unknown as Profile[];
@@ -239,10 +275,31 @@ export default async function Home() {
     leanCutMode: profile.lean_cut_mode,
     priority: profile.priority,
   });
-  const plan =
+  const basePlan =
     calcResult.recommendedFormula === 'katchMcArdle'
       ? calcResult.katchMcArdle
       : calcResult.mifflin;
+  // D2: トレ日は炭水化物を +25g（+100kcal）、休養日は -38g（-150kcal）
+  const isTrainingDay = workoutSessions.some((s) => s.date === today);
+  const dayAdjustKcal = isTrainingDay ? 100 : -150;
+  const plan = {
+    ...basePlan,
+    targetCalories: basePlan.targetCalories + dayAdjustKcal,
+    carbs_g: Math.max(0, basePlan.carbs_g + dayAdjustKcal / 4),
+  };
+  const roughItems: QuickMealItem[] = (
+    [
+      ['軽め', 0.2],
+      ['普通', 0.3],
+      ['多め', 0.45],
+    ] as const
+  ).map(([label, ratio]) => ({
+    food_name: `ざっくり記録（${label}）`,
+    calories: Math.round(plan.targetCalories * ratio),
+    protein_g: Math.round(plan.protein_g * ratio),
+    fat_g: Math.round(plan.fat_g * ratio),
+    carbs_g: Math.round(plan.carbs_g * ratio),
+  }));
   const cheatDayPlan = buildCheatDayPlan(profile);
   const isFreeDay = cheatDayPlan.isTodayCheatDay;
   const remainingKcal = Math.max(0, plan.targetCalories - mealTotal.calories);
@@ -268,6 +325,35 @@ export default async function Home() {
   const todaySessions = buildSplitTemplates(
     workoutSessions.filter((s) => s.date === today),
   ).map((t) => ({ label: t.label, setCount: t.session.totalSets }));
+
+  // ---------- 気づき・レポート ----------
+  const conditions = (conditionsRaw as unknown as DayCondition[]).reverse();
+  const mealDays = mealDaysRaw as unknown as MealDay[];
+  const histories = buildExerciseHistories(workoutSessions);
+  const balance = buildBodyPartBalance(workoutSessions, today);
+  const recentWorkout = workoutSessions.some((s) => s.date >= addDays(today, -14));
+  const insights: Insight[] = [
+    reminderInsight(timeInJST(), todayWeight !== null, meals.length),
+    plateauInsight(weights, today, Number(profile.target_weight_kg), basePlan.targetCalories),
+    refeedRecoveryInsight(weights, mealDays, today, basePlan.targetCalories, cheatDayPlan.freeDayDates),
+    ...workoutInsights(findRecentPRs(histories, addDays(today, -7)), balance, today, recentWorkout),
+  ].filter((i): i is Insight => i !== null);
+  const goal = goalCheck(
+    weights,
+    today,
+    Number(profile.target_weight_kg),
+    PERIOD_WEEKS[profile.target_period],
+  );
+  const report = weeklyReport(
+    weights,
+    conditions,
+    mealDays,
+    workoutSessions.map((s) => s.date),
+    today,
+    basePlan.targetCalories,
+    basePlan.protein_g,
+  );
+  const showReport = report.weightDays + report.mealDays + report.workouts > 0;
 
   const hydrationTotal = Number(
     (hydrationRowsRaw as unknown as Array<{ total: number }>)[0]?.total ?? 0,
@@ -316,6 +402,9 @@ export default async function Home() {
               </div>
             </div>
             <ProgressBar value={mealTotal.calories} max={plan.targetCalories} />
+            <div className="mt-2 text-[10px] text-slate-500">
+              {isTrainingDay ? '💪 トレ日：炭水化物 +25g（+100kcal）' : '🛌 休養日：炭水化物 -38g（-150kcal）。筋トレを記録するとトレ日の目標に切り替わります'}
+            </div>
             <div className="mt-3 grid grid-cols-3 gap-2">
               <Macro label="P" value={mealTotal.protein_g} target={plan.protein_g} color="#a3ff12" />
               <Macro label="F" value={mealTotal.fat_g} target={plan.fat_g} color="#fbbf24" />
@@ -330,6 +419,8 @@ export default async function Home() {
           前回の記録から <b>{daysSinceLastLog}日</b> 空いています。まずは体重だけでもOK、今日から再開しましょう。
         </div>
       )}
+
+      <InsightList insights={insights} />
 
       <WeightQuickCard
         todayWeight={todayWeight}
@@ -351,6 +442,7 @@ export default async function Home() {
         today={meals}
         currentMealType={currentMealType}
         savableTypes={savableTypes}
+        roughItems={roughItems}
       />
 
       <WaterQuick totalMl={hydrationTotal} />
@@ -360,6 +452,10 @@ export default async function Home() {
         todaySessions={todaySessions}
         sessionsThisWeek={workoutStats.sessionsThisWeek}
       />
+
+      {goal && <GoalCheckCard goal={goal} />}
+
+      {showReport && <WeeklyReportCard report={report} />}
 
       {!isFreeDay && cheatDayPlan.nextDate && (
         <Link

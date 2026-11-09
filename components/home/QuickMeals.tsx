@@ -13,6 +13,7 @@ import {
   undoQuickMealsAction,
   type QuickMealItem,
 } from '@/app/actions/quick';
+import { nowAt, sendOrQueue } from '@/lib/offline-queue';
 import { MEAL_TYPE_ICONS, MEAL_TYPE_LABELS, type MealType } from '@/lib/types';
 
 export interface MealSetView {
@@ -38,6 +39,8 @@ interface Props {
   currentMealType: MealType;
   /** セット保存の候補にする区分（今日2品以上記録された区分） */
   savableTypes: MealType[];
+  /** ざっくり記録（軽め・普通・多め）の1食分 */
+  roughItems: QuickMealItem[];
 }
 
 type Toast = { text: string; ids: string[] } | null;
@@ -48,6 +51,7 @@ export default function QuickMeals({
   today,
   currentMealType,
   savableTypes,
+  roughItems,
 }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -70,6 +74,26 @@ export default function QuickMeals({
         return;
       }
       setToast({ text: `${label} を追加しました`, ids: res.ids });
+      router.refresh();
+    });
+  };
+
+  /** 1品の追加（オフラインなら端末に保存） */
+  const addItem = (item: QuickMealItem) => {
+    setError(null);
+    startTransition(async () => {
+      const res = await sendOrQueue({ kind: 'meal', item, at: nowAt() }, () =>
+        quickAddMealAction(item),
+      );
+      if (res.status === 'queued') {
+        setToast({ text: `${item.food_name} を端末に保存（オフライン）`, ids: [] });
+        return;
+      }
+      if ('error' in res.result) {
+        setError(res.result.error);
+        return;
+      }
+      setToast({ text: `${item.food_name} を追加しました`, ids: res.result.ids });
       router.refresh();
     });
   };
@@ -181,7 +205,7 @@ export default function QuickMeals({
               key={item.food_name}
               type="button"
               disabled={pending}
-              onClick={() => run(() => quickAddMealAction(item), item.food_name)}
+              onClick={() => addItem(item)}
               className="flex min-h-14 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-2.5 py-2 text-left active:scale-[0.98] active:border-[#a3ff12]/60 disabled:opacity-70"
             >
               <Plus size={14} className="shrink-0 text-[#a3ff12]" />
@@ -201,6 +225,28 @@ export default function QuickMeals({
           食事を記録すると、よく食べるメニューがここに並びます。
         </p>
       )}
+
+      <div className="mt-3">
+        <div className="mb-1.5 text-[11px] font-semibold text-slate-400">
+          思い出せないときは ざっくり記録（1食分）
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {roughItems.map((item) => (
+            <button
+              key={item.food_name}
+              type="button"
+              disabled={pending}
+              onClick={() => addItem(item)}
+              className="h-12 rounded-lg border border-white/10 bg-white/[0.035] text-xs font-semibold active:scale-[0.98] disabled:opacity-70"
+            >
+              {item.food_name.replace('ざっくり記録（', '').replace('）', '')}
+              <span className="block text-[10px] font-normal tabular-nums text-slate-400">
+                約{item.calories}kcal
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
 
       <Link
         href="/log"
@@ -255,6 +301,7 @@ export default function QuickMeals({
       {toast && (
         <div className="fixed inset-x-4 bottom-[88px] z-50 mx-auto flex max-w-md items-center justify-between gap-3 rounded-lg border border-[#a3ff12]/40 bg-[#0b1018] px-4 py-3 text-sm shadow-2xl">
           <span className="min-w-0 truncate">✓ {toast.text}</span>
+          {toast.ids.length > 0 && (
           <button
             type="button"
             onClick={undo}
@@ -262,6 +309,7 @@ export default function QuickMeals({
           >
             <Undo2 size={14} /> 取り消す
           </button>
+          )}
         </div>
       )}
     </section>

@@ -304,37 +304,6 @@ export const WORKOUT_SIDE_LABELS: Record<WorkoutSide, string> = {
 };
 
 // =================
-// 文献リサーチ
-// =================
-export interface ResearchCitation {
-  title: string;
-  url: string;
-}
-
-export interface ResearchArticle {
-  id: string;
-  user_id: string;
-  topic: string;
-  focus: string | null;
-  summary: string;
-  citations: ResearchCitation[];
-  is_favorite: boolean;
-  created_at: string;
-  expires_at: string;
-}
-
-export const RESEARCH_PRESET_TOPICS = [
-  'リーンカット',
-  'タンパク質タイミング',
-  'レジスタンストレーニング容量',
-  'リフィード／ダイエットブレイク',
-  'アナボリックウィンドウ',
-  'ボディリコンポジション',
-  'ミニカット',
-  '睡眠と減量',
-] as const;
-
-// =================
 // 食事タイミング解析
 // =================
 export interface MealTimingAnalysis {

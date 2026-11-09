@@ -56,7 +56,7 @@ const ACTIVITY: Record<TrainingFreq, number> = {
   '5+': 1.725,
 };
 
-const WEEKS: Record<Period, number> = {
+export const PERIOD_WEEKS: Record<Period, number> = {
   '1mo': 4.345,
   '3mo': 13.04,
   '6mo': 26.07,
@@ -99,7 +99,7 @@ function buildResult(
   const tdee = bmr * ACTIVITY[input.trainingFreq];
 
   // 期間あたりの週次変化（kg/週）
-  const weeks = WEEKS[input.period];
+  const weeks = PERIOD_WEEKS[input.period];
   const totalDeltaKg = input.targetWeightKg - input.weightKg;
   const rawWeekly = totalDeltaKg / weeks;
 
