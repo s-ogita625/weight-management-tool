@@ -15,6 +15,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   // ピンチズームを許可（アクセシビリティ要件）
   themeColor: '#070a0f',
+  // 折りたたみ端末のパンチホール・ナビゲーションバー領域まで使う
+  viewportFit: 'cover',
 };
 
 export default async function RootLayout({
@@ -27,7 +29,7 @@ export default async function RootLayout({
   return (
     <html lang="ja" className="h-full antialiased">
       <body className="min-h-full flex flex-col sport-grid-line">
-        <main className="flex-1 max-w-2xl w-full mx-auto px-4 pt-4 md:pt-8">
+        <main className="page-main mx-auto w-full max-w-6xl flex-1 px-4 pt-4 md:px-6 md:pt-6">
           {children}
         </main>
         {userId ? <BottomNav /> : null}

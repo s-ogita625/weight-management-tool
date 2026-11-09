@@ -64,7 +64,7 @@ export default function BottomNav() {
 
   return (
     <>
-      <nav className="fixed bottom-0 inset-x-0 z-40 grid h-[72px] grid-cols-5 border-t border-white/10 bg-[#080c13]/95 px-1 pb-[env(safe-area-inset-bottom)] shadow-[0_-18px_45px_rgba(0,0,0,0.42)] backdrop-blur-xl md:relative md:mx-auto md:mt-8 md:max-w-2xl md:rounded-lg md:border">
+      <nav className="bottom-nav fixed bottom-0 inset-x-0 z-40 mx-auto grid h-[72px] max-w-3xl grid-cols-5 border-t border-white/10 bg-[#080c13]/95 px-1 pb-[env(safe-area-inset-bottom)] shadow-[0_-18px_45px_rgba(0,0,0,0.42)] backdrop-blur-xl sm:rounded-t-xl sm:border-x">
         {mainItems.map((item) => {
           const active =
             item.href === '/'
@@ -83,7 +83,7 @@ export default function BottomNav() {
                 <span className="absolute top-1 h-1 w-8 rounded-full bg-[#a3ff12] shadow-[0_0_18px_rgba(163,255,18,0.8)]" />
               )}
               <Icon size={20} strokeWidth={2.2} />
-              <span>{item.label}</span>
+              <span className="nav-label">{item.label}</span>
             </Link>
           );
         })}
@@ -93,7 +93,7 @@ export default function BottomNav() {
           aria-label="メニュー"
         >
           <Menu size={20} strokeWidth={2.2} />
-          <span>メニュー</span>
+          <span className="nav-label">メニュー</span>
         </button>
       </nav>
 
@@ -103,7 +103,7 @@ export default function BottomNav() {
             className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm"
             onClick={() => setMenuOpen(false)}
           />
-          <div className="fixed bottom-0 inset-x-0 z-50 max-h-[82vh] overflow-y-auto rounded-t-2xl border border-white/10 bg-[#0b1018] pb-6 shadow-2xl">
+          <div className="fixed bottom-0 inset-x-0 z-50 mx-auto max-h-[82dvh] max-w-xl overflow-y-auto rounded-t-2xl border border-white/10 bg-[#0b1018] pb-6 shadow-2xl">
             <div className="flex items-center justify-between px-4 pb-2 pt-4">
               <div>
                 <div className="sport-kicker">Control deck</div>
