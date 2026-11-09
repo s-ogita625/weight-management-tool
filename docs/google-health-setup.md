@@ -14,6 +14,17 @@ Fitbit Air のデータは Google Health アプリ経由でクラウドに同期
 
 同期は毎朝7時（Vercel Cron）と、ホームを開いたとき（前回から3時間以上たっていれば裏で実行）。読み取り専用で、Google 側のデータは変更しません。
 
+## 設定済みの内容（2026-11-10）
+
+- Google アカウント: ogitashiyu@gmail.com
+- プロジェクト: `weight-management-tool`（課金アカウントなし）
+- Google Health API: 有効
+- 同意画面: 外部 / 本番環境（未審査・100ユーザーまで）/ ホームページ・プライバシーポリシー（/privacy）・利用規約（/terms）
+- スコープ: activity_and_fitness.readonly, sleep.readonly
+- OAuth クライアント: ウェブ アプリケーション「weight-management-tool web」
+  - リダイレクト URI: `https://weight-management-tool.vercel.app/api/google-health/callback`, `http://localhost:3000/api/google-health/callback`
+- Vercel（Production）: `GOOGLE_HEALTH_CLIENT_ID` 設定済み / `GOOGLE_HEALTH_CLIENT_SECRET` は本人が設定
+
 ## 準備（Google Cloud で1回だけ）
 
 1. https://console.cloud.google.com/ で新しいプロジェクトを作成（例: `weight-management-tool`）
