@@ -19,11 +19,19 @@ interface Props {
     DailyLog,
     'date' | 'sleep_hours' | 'sleep_quality' | 'fatigue' | 'mood' | 'bowel'
   > | null;
+  /** Fitbit（Google Health）と連携中なら、睡眠は自動取得なので入力欄を出さない */
+  fitbitSleep?: {
+    connected: boolean;
+    minutes: number | null;
+    deep: number | null;
+    rem: number | null;
+  } | null;
 }
 
 const BOWELS: Bowel[] = ['none', 'soft', 'normal', 'firm', 'diarrhea'];
 
-export default function DailyLogForm({ initial, previous }: Props) {
+export default function DailyLogForm({ initial, previous, fitbitSleep }: Props) {
+  const sleepFromFitbit = Boolean(fitbitSleep?.connected);
   const router = useRouter();
   const [state, formAction, pending] = useActionState(saveDailyLogAction, null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -134,8 +142,10 @@ export default function DailyLogForm({ initial, previous }: Props) {
         <button
           type="button"
           onClick={() => {
-            if (previous.sleep_hours !== null) setSleepHours(String(previous.sleep_hours));
-            setSleepQuality(previous.sleep_quality ?? null);
+            if (!sleepFromFitbit) {
+              if (previous.sleep_hours !== null) setSleepHours(String(previous.sleep_hours));
+              setSleepQuality(previous.sleep_quality ?? null);
+            }
             setFatigue(previous.fatigue ?? null);
             setMood(previous.mood ?? null);
             setBowel(previous.bowel ?? '');
@@ -146,7 +156,20 @@ export default function DailyLogForm({ initial, previous }: Props) {
         </button>
       )}
 
-      {/* 睡眠 */}
+      {/* 睡眠（Fitbit 連携中は自動取得） */}
+      {sleepFromFitbit ? (
+        <div className="rounded-xl border border-[#20e0ff]/30 bg-[#20e0ff]/10 px-4 py-3 text-sm">
+          <div className="font-semibold text-[#8feeff]">睡眠は Fitbit から自動で記録されます</div>
+          <div className="mt-1 text-xs text-slate-300">
+            {fitbitSleep?.minutes
+              ? `昨夜: ${Math.floor(fitbitSleep.minutes / 60)}時間${String(fitbitSleep.minutes % 60).padStart(2, '0')}分` +
+                (fitbitSleep.deep !== null ? ` / 深い睡眠 ${fitbitSleep.deep}分` : '') +
+                (fitbitSleep.rem !== null ? ` / レム ${fitbitSleep.rem}分` : '')
+              : 'まだ今朝のデータが同期されていません（毎朝7時とホームを開いたときに同期）'}
+          </div>
+        </div>
+      ) : (
+      <>
       <div>
         <label className="block text-sm font-medium mb-1">
           睡眠時間 <span className="text-gray-500">(時間)</span>
@@ -172,6 +195,8 @@ export default function DailyLogForm({ initial, previous }: Props) {
         onChange={setSleepQuality}
         labels={QUALITY_LABELS}
       />
+      </>
+      )}
       <SegmentField
         label="疲労度"
         name="fatigue"

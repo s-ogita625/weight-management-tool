@@ -202,17 +202,14 @@ export async function quickSaveWeightAction(
   if (copyCondition) {
     await sql`
       update daily_logs d set
-        sleep_hours = coalesce(d.sleep_hours, p.sleep_hours),
-        sleep_quality = coalesce(d.sleep_quality, p.sleep_quality),
         fatigue = coalesce(d.fatigue, p.fatigue),
         mood = coalesce(d.mood, p.mood),
         bowel = coalesce(d.bowel, p.bowel)
       from (
-        select sleep_hours, sleep_quality, fatigue, mood, bowel
+        select fatigue, mood, bowel
         from daily_logs
         where user_id = ${userId} and date < ${today}
-          and (sleep_hours is not null or sleep_quality is not null
-               or fatigue is not null or mood is not null)
+          and (fatigue is not null or mood is not null)
         order by date desc
         limit 1
       ) p
