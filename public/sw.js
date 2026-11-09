@@ -1,9 +1,10 @@
 /* 体重管理ツール Service Worker
- * - 画面遷移: ネットワーク優先 → 失敗時は最後に見たページ → offline.html
+ * - 画面遷移: 常にネットワーク。失敗時は offline.html のみ
+ *   （ログイン後のページは個人データを含むためキャッシュしない）
  * - 静的アセット(_next/static, アイコン): キャッシュ優先
  * - Web Push: 記録リマインド通知
  */
-const VERSION = 'v2-1';
+const VERSION = 'v2-2';
 const PAGE_CACHE = `pages-${VERSION}`;
 const ASSET_CACHE = `assets-${VERSION}`;
 const OFFLINE_URL = '/offline.html';
@@ -35,17 +36,7 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.startsWith('/api/')) return;
 
   if (req.mode === 'navigate') {
-    event.respondWith(
-      fetch(req)
-        .then((res) => {
-          if (res.ok) {
-            const copy = res.clone();
-            caches.open(PAGE_CACHE).then((c) => c.put(req, copy));
-          }
-          return res;
-        })
-        .catch(async () => (await caches.match(req)) || (await caches.match(OFFLINE_URL))),
-    );
+    event.respondWith(fetch(req).catch(() => caches.match(OFFLINE_URL)));
     return;
   }
 

@@ -35,6 +35,8 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
   `) as unknown as Array<{ id: string; endpoint: string; p256dh: string; auth: string }>;
   let sent = 0;
   for (const s of subs) {
+    // 念のため送信時にも https のみ許可（登録時に既知のプッシュサービスへ制限済み）
+    if (!s.endpoint.startsWith('https://')) continue;
     try {
       await webpush.sendNotification(
         { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
