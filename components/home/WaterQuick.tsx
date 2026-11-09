@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTransition } from 'react';
 import { quickAddWaterAction } from '@/app/actions/quick';
+import { nowAt, sendOrQueue } from '@/lib/offline-queue';
 
 export default function WaterQuick({ totalMl }: { totalMl: number }) {
   const router = useRouter();
@@ -12,8 +13,10 @@ export default function WaterQuick({ totalMl }: { totalMl: number }) {
 
   const add = (ml: number) =>
     startTransition(async () => {
-      await quickAddWaterAction(ml);
-      router.refresh();
+      const res = await sendOrQueue({ kind: 'water', ml, at: nowAt() }, () =>
+        quickAddWaterAction(ml),
+      );
+      if (res.status === 'sent') router.refresh();
     });
 
   return (

@@ -11,7 +11,6 @@ import {
   LogOut,
   Menu,
   MessageCircle,
-  Moon,
   Settings,
   Sparkles,
   Sunrise,
@@ -23,6 +22,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { logoutAction } from '@/app/actions/auth';
+import PushToggle from '@/components/pwa/PushToggle';
 
 type NavItem = {
   href: string;
@@ -40,12 +40,11 @@ const mainItems: NavItem[] = [
 const moreItems: NavItem[] = [
   { href: '/morning', label: '朝の記録（体調）', icon: Sunrise },
   { href: '/plan', label: '食事プラン', icon: BarChart3 },
-  { href: '/hydration', label: '水分補給', icon: Droplets },
+  { href: '/hydration', label: '水分の履歴', icon: Droplets },
   { href: '/calendar', label: '記録カレンダー', icon: CalendarDays },
   { href: '/history', label: '食事履歴', icon: History },
   { href: '/coach', label: 'AIコーチング', icon: Bot },
   { href: '/chat', label: 'AIチャット', icon: MessageCircle },
-  { href: '/research', label: '文献リサーチ', icon: Moon },
   { href: '/onboarding', label: 'プロフィール編集', icon: Settings },
 ];
 
@@ -134,6 +133,9 @@ export default function BottomNav() {
                   </li>
                 );
               })}
+              <li>
+                <PushToggle />
+              </li>
               <li>
                 <form action={logoutAction}>
                   <button

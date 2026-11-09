@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { quickSaveWeightAction } from '@/app/actions/quick';
+import { nowAt, sendOrQueue } from '@/lib/offline-queue';
 
 interface Props {
   /** 今日すでに記録済みの体重 */
@@ -47,9 +48,18 @@ export default function WeightQuickCard({
   const save = () => {
     setError(null);
     startTransition(async () => {
-      const res = await quickSaveWeightAction(Number(value), copyCondition);
-      if ('error' in res) {
-        setError(res.error);
+      const weight = Number(value);
+      const res = await sendOrQueue(
+        { kind: 'weight', weight, copyCondition, at: nowAt() },
+        () => quickSaveWeightAction(weight, copyCondition),
+      );
+      if (res.status === 'queued') {
+        setEditing(false);
+        setError('オフラインのため端末に保存しました（電波が戻ると自動送信）');
+        return;
+      }
+      if ('error' in res.result) {
+        setError(res.result.error);
         return;
       }
       setEditing(false);

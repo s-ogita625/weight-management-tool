@@ -31,6 +31,23 @@ const MEAL_TYPES = new Set<MealType>([
   'post_workout',
 ]);
 
+/** オフライン保存した記録を後で送るときの記録日時（JST） */
+export interface RecordedAt {
+  date: string;
+  time: string;
+}
+
+/** 記録日時を検証。不正・未来・8日以上前なら今の日時を使う */
+function resolveAt(at?: RecordedAt | null): RecordedAt {
+  const now = { date: dateInJST(), time: timeInJST() };
+  if (!at) return now;
+  const okFormat =
+    /^\d{4}-\d{2}-\d{2}$/.test(String(at.date)) && /^\d{2}:\d{2}$/.test(String(at.time));
+  if (!okFormat || at.date > now.date) return now;
+  const diffDays = (Date.parse(now.date) - Date.parse(at.date)) / 86400000;
+  return diffDays <= 7 ? { date: at.date, time: at.time } : now;
+}
+
 async function requireUser(): Promise<string> {
   const userId = await getSessionUserId();
   if (!userId) redirect('/login');
@@ -58,9 +75,9 @@ async function insertMeals(
   userId: string,
   items: QuickMealItem[],
   mealType?: MealType | null,
+  at?: RecordedAt | null,
 ): Promise<string[]> {
-  const date = dateInJST();
-  const time = timeInJST();
+  const { date, time } = resolveAt(at);
   const meal_type =
     mealType && MEAL_TYPES.has(mealType) ? mealType : inferMealType(time);
   const ids: string[] = [];
@@ -83,11 +100,12 @@ async function insertMeals(
 /** 定番メニューを1品、今日の食事として追加 */
 export async function quickAddMealAction(
   item: QuickMealItem,
+  at?: RecordedAt | null,
 ): Promise<{ ok: true; ids: string[] } | { error: string }> {
   const userId = await requireUser();
   const cleaned = cleanItem(item);
   if (!cleaned) return { error: '食事データが不正です' };
-  const ids = await insertMeals(userId, [cleaned]);
+  const ids = await insertMeals(userId, [cleaned], null, at);
   revalidateHome();
   return { ok: true, ids };
 }
@@ -166,13 +184,14 @@ export async function deleteMealSetAction(setId: string): Promise<void> {
 export async function quickSaveWeightAction(
   weightKg: number,
   copyCondition: boolean,
+  at?: RecordedAt | null,
 ): Promise<{ ok: true } | { error: string }> {
   const userId = await requireUser();
   const weight = Math.round(Number(weightKg) * 100) / 100;
   if (!Number.isFinite(weight) || weight < 30 || weight > 300) {
     return { error: '体重は30〜300kgで入力してください' };
   }
-  const today = dateInJST();
+  const today = resolveAt(at).date;
 
   await sql`
     insert into daily_logs (user_id, date, weight_kg)
@@ -217,6 +236,7 @@ export async function quickSaveWeightAction(
 /** 水を追加（100ml 単位） */
 export async function quickAddWaterAction(
   amountMl: number,
+  at?: RecordedAt | null,
 ): Promise<{ ok: true } | { error: string }> {
   const userId = await requireUser();
   const amount = Math.round(Number(amountMl));
@@ -225,7 +245,7 @@ export async function quickAddWaterAction(
   }
   await sql`
     insert into hydration_logs (user_id, date, time, drink_type, amount_ml)
-    values (${userId}, ${dateInJST()}, ${timeInJST()}, 'water', ${amount})
+    values (${userId}, ${resolveAt(at).date}, ${resolveAt(at).time}, 'water', ${amount})
   `;
   revalidatePath('/');
   revalidatePath('/hydration');

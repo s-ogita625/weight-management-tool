@@ -22,6 +22,20 @@ import {
 import { dateInJST, timeInJST } from '@/lib/date';
 import { buildSplitTemplates, type WorkoutTemplate } from '@/lib/workout-templates';
 import {
+  buildBodyPartBalance,
+  buildExerciseHistories,
+  buildProgressionSuggestions,
+  findRecentPRs,
+  type ProgressionSuggestion,
+} from '@/lib/workout-analysis';
+import { addDays } from '@/lib/stats';
+import {
+  ProgressionPanel,
+  RestTimer,
+  StrengthPanel,
+  startRestTimer,
+} from '@/components/workout/WorkoutInsights';
+import {
   BODY_PART_ICONS,
   BODY_PART_LABELS,
   WORKOUT_SET_TYPE_LABELS,
@@ -43,6 +57,8 @@ type SetInput = {
   set_type: WorkoutSetType;
   side: WorkoutSide;
   memo: string;
+  /** 画面上の「完了」チェック（保存はしない） */
+  done?: boolean;
 };
 
 type ExerciseInput = {
@@ -113,6 +129,36 @@ export default function WorkoutView({ sessions, stats, initialCopyKey }: Props) 
   );
 
   const frequent = stats.frequentExercises;
+  const histories = useMemo(() => buildExerciseHistories(sessions), [sessions]);
+  const today = dateInJST();
+  const suggestions = useMemo(
+    () => buildProgressionSuggestions(histories, today),
+    [histories, today],
+  );
+  const prs = useMemo(() => findRecentPRs(histories, addDays(today, -90)), [histories, today]);
+  const balance = useMemo(() => buildBodyPartBalance(sessions, today), [sessions, today]);
+
+  const applySuggestions = (items: ProgressionSuggestion[]) => {
+    const byName = new Map(items.map((i) => [i.name, i]));
+    setExercises((current) =>
+      current.map((exercise) => {
+        const s = byName.get(exercise.name.trim());
+        if (!s) return exercise;
+        return {
+          ...exercise,
+          sets: exercise.sets.map((set) =>
+            set.set_type === 'warmup'
+              ? set
+              : {
+                  ...set,
+                  weight_kg: String(s.suggestedWeight),
+                  reps: String(s.targetReps),
+                },
+          ),
+        };
+      }),
+    );
+  };
 
   useEffect(() => {
     if (state && 'ok' in state && state.ok) {
@@ -373,6 +419,14 @@ export default function WorkoutView({ sessions, stats, initialCopyKey }: Props) 
             </div>
           )}
 
+          <ProgressionPanel
+            suggestions={suggestions}
+            exerciseNames={exercises.map((e) => e.name)}
+            onApply={applySuggestions}
+          />
+
+          <RestTimer />
+
           <form action={formAction} className="space-y-4">
             <input type="hidden" name="payload" value={payload} />
             <WorkoutMetaFields
@@ -483,7 +537,10 @@ export default function WorkoutView({ sessions, stats, initialCopyKey }: Props) 
       )}
 
       {tab === 'analysis' && (
-        <AnalysisPanel stats={stats} sessions={sessions} />
+        <div className="space-y-4">
+          <StrengthPanel histories={histories} prs={prs} balance={balance} />
+          <AnalysisPanel stats={stats} sessions={sessions} />
+        </div>
       )}
     </div>
   );
@@ -708,9 +765,23 @@ function ExerciseCard({
             className="rounded-lg border border-white/10 bg-black/20 p-3"
           >
             <div className="mb-2 flex items-center justify-between">
-              <div className="text-xs font-black text-slate-300">
-                SET {setIndex + 1}
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !set.done;
+                  onPatchSet(setIndex, { done: next });
+                  if (next) startRestTimer();
+                }}
+                className={`flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-black ${
+                  set.done
+                    ? 'border-[#a3ff12] bg-[#a3ff12] text-[#061006]'
+                    : 'border-white/15 text-slate-300'
+                }`}
+                aria-pressed={Boolean(set.done)}
+              >
+                {set.done ? '✓' : '○'} SET {setIndex + 1}
+                {!set.done && <span className="font-normal text-slate-500">完了で休憩</span>}
+              </button>
               <button
                 type="button"
                 onClick={() => onRemoveSet(setIndex)}

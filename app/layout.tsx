@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import BottomNav from '@/components/nav/BottomNav';
+import PwaClient from '@/components/pwa/PwaClient';
 import { getSessionUserId } from '@/lib/auth';
 
 export const metadata: Metadata = {
@@ -30,6 +31,7 @@ export default async function RootLayout({
           {children}
         </main>
         {userId ? <BottomNav /> : null}
+        {userId ? <PwaClient /> : null}
       </body>
     </html>
   );
