@@ -31,17 +31,17 @@ type NavItem = {
 };
 
 const mainItems: NavItem[] = [
-  { href: '/', label: 'ホーム', icon: Home },
-  { href: '/morning', label: '朝記録', icon: Sunrise },
+  { href: '/', label: '今日', icon: Home },
   { href: '/log', label: '食事', icon: Utensils },
   { href: '/workout', label: '筋トレ', icon: Dumbbell },
+  { href: '/trend', label: '推移', icon: Sparkles },
 ];
 
 const moreItems: NavItem[] = [
+  { href: '/morning', label: '朝の記録（体調）', icon: Sunrise },
   { href: '/plan', label: '食事プラン', icon: BarChart3 },
   { href: '/hydration', label: '水分補給', icon: Droplets },
   { href: '/calendar', label: '記録カレンダー', icon: CalendarDays },
-  { href: '/trend', label: '体重推移', icon: Sparkles },
   { href: '/history', label: '食事履歴', icon: History },
   { href: '/coach', label: 'AIコーチング', icon: Bot },
   { href: '/chat', label: 'AIチャット', icon: MessageCircle },

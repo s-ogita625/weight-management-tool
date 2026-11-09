@@ -14,11 +14,16 @@ import {
 
 interface Props {
   initial?: DailyLog | null;
+  /** 直近の体調記録（「前回と同じ」ボタン用） */
+  previous?: Pick<
+    DailyLog,
+    'date' | 'sleep_hours' | 'sleep_quality' | 'fatigue' | 'mood' | 'bowel'
+  > | null;
 }
 
 const BOWELS: Bowel[] = ['none', 'soft', 'normal', 'firm', 'diarrhea'];
 
-export default function DailyLogForm({ initial }: Props) {
+export default function DailyLogForm({ initial, previous }: Props) {
   const router = useRouter();
   const [state, formAction, pending] = useActionState(saveDailyLogAction, null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -124,6 +129,22 @@ export default function DailyLogForm({ initial }: Props) {
       </div>
 
       <hr className="border-gray-200" />
+
+      {previous && (
+        <button
+          type="button"
+          onClick={() => {
+            if (previous.sleep_hours !== null) setSleepHours(String(previous.sleep_hours));
+            setSleepQuality(previous.sleep_quality ?? null);
+            setFatigue(previous.fatigue ?? null);
+            setMood(previous.mood ?? null);
+            setBowel(previous.bowel ?? '');
+          }}
+          className="w-full h-11 rounded-xl border border-[#a3ff12]/40 bg-[#a3ff12]/10 text-sm font-semibold text-[#a3ff12]"
+        >
+          体調はいつも通り（{previous.date} の内容をコピー）
+        </button>
+      )}
 
       {/* 睡眠 */}
       <div>

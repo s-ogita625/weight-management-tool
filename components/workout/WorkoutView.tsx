@@ -20,6 +20,7 @@ import {
   saveWorkoutRoutineAction,
 } from '@/app/actions/workout';
 import { dateInJST, timeInJST } from '@/lib/date';
+import { buildSplitTemplates, type WorkoutTemplate } from '@/lib/workout-templates';
 import {
   BODY_PART_ICONS,
   BODY_PART_LABELS,
@@ -51,33 +52,17 @@ type ExerciseInput = {
   sets: SetInput[];
 };
 
-type WorkoutTemplate = {
-  key: string;
-  label: string;
-  session: WorkoutSessionDetail;
-};
 
 interface Props {
   sessions: WorkoutSessionDetail[];
   stats: WorkoutStats;
+  /** ホームの「編集して記録」から渡される部位テンプレートのキー */
+  initialCopyKey?: string | null;
 }
 
 const BODY_PARTS = Object.keys(BODY_PART_LABELS) as BodyPart[];
 const SET_TYPES = Object.keys(WORKOUT_SET_TYPE_LABELS) as WorkoutSetType[];
 const SIDES = Object.keys(WORKOUT_SIDE_LABELS) as WorkoutSide[];
-const SPLIT_ORDER: BodyPart[] = [
-  'chest',
-  'triceps',
-  'back',
-  'arms',
-  'shoulders',
-  'legs',
-  'core',
-  'cardio',
-  'full_body',
-  'other',
-];
-
 const DEFAULT_EXERCISE: ExerciseInput = {
   name: '',
   body_part: 'chest',
@@ -95,7 +80,7 @@ const DEFAULT_EXERCISE: ExerciseInput = {
   ],
 };
 
-export default function WorkoutView({ sessions, stats }: Props) {
+export default function WorkoutView({ sessions, stats, initialCopyKey }: Props) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>('record');
   const [state, formAction, pending] = useActionState(
@@ -108,17 +93,26 @@ export default function WorkoutView({ sessions, stats }: Props) {
   );
   const [date, setDate] = useState(dateInJST());
   const [startTime, setStartTime] = useState(timeInJST());
-  const [durationMin, setDurationMin] = useState('');
-  const [mainBodyPart, setMainBodyPart] = useState<BodyPart>('chest');
+  const templates = useMemo(() => buildSplitTemplates(sessions), [sessions]);
+  // ホームの「編集して記録」から来た場合、該当部位の最新メニューを初期値にする
+  const [initialForm] = useState(() => {
+    const template = initialCopyKey
+      ? templates.find((t) => t.key === initialCopyKey)
+      : undefined;
+    return template ? templateToForm(template) : null;
+  });
+  const [durationMin, setDurationMin] = useState(initialForm?.durationMin ?? '');
+  const [mainBodyPart, setMainBodyPart] = useState<BodyPart>(
+    initialForm?.mainBodyPart ?? 'chest',
+  );
   const [effort, setEffort] = useState('7');
-  const [memo, setMemo] = useState('');
+  const [memo, setMemo] = useState(initialForm?.memo ?? '');
   const [routineName, setRoutineName] = useState('');
-  const [exercises, setExercises] = useState<ExerciseInput[]>([
-    structuredClone(DEFAULT_EXERCISE),
-  ]);
+  const [exercises, setExercises] = useState<ExerciseInput[]>(
+    initialForm?.exercises ?? [structuredClone(DEFAULT_EXERCISE)],
+  );
 
   const frequent = stats.frequentExercises;
-  const templates = useMemo(() => buildSplitTemplates(sessions), [sessions]);
 
   useEffect(() => {
     if (state && 'ok' in state && state.ok) {
@@ -166,33 +160,11 @@ export default function WorkoutView({ sessions, stats }: Props) {
   );
 
   const copySessionTemplate = (template: WorkoutTemplate) => {
-    const source = template.session;
-    setMainBodyPart(source.main_body_part ?? source.exercises[0]?.body_part ?? 'chest');
-    setDurationMin(
-      source.duration_min ? String(source.duration_min) : '',
-    );
-    setMemo(`${template.label}を${source.date}の最新メニューからコピー`);
-    setExercises(
-      source.exercises.length > 0
-        ? source.exercises.map((exercise) => ({
-            name: exercise.name,
-            body_part: exercise.body_part,
-            memo: exercise.memo ?? '',
-            sets: exercise.sets.length
-              ? exercise.sets.map((set) => ({
-                  weight_kg:
-                    set.weight_kg === null ? '' : String(Number(set.weight_kg)),
-                  reps: set.reps === null ? '' : String(Number(set.reps)),
-                  rpe: set.rpe === null ? '' : String(Number(set.rpe)),
-                  rir: set.rir === null ? '' : String(Number(set.rir)),
-                  set_type: set.set_type,
-                  side: set.side,
-                  memo: set.memo ?? '',
-                }))
-              : structuredClone(DEFAULT_EXERCISE.sets),
-          }))
-        : [structuredClone(DEFAULT_EXERCISE)],
-    );
+    const form = templateToForm(template);
+    setMainBodyPart(form.mainBodyPart);
+    setDurationMin(form.durationMin);
+    setMemo(form.memo);
+    setExercises(form.exercises);
   };
 
   const addExercise = (template?: Partial<ExerciseInput>) => {
@@ -634,44 +606,38 @@ function WorkoutMetaFields({
   );
 }
 
-function buildSplitTemplates(
-  sessions: WorkoutSessionDetail[],
-): WorkoutTemplate[] {
-  const templates = new Map<string, WorkoutTemplate>();
-
-  for (const session of sessions) {
-    const parts = Array.from(
-      new Set(session.exercises.map((exercise) => exercise.body_part)),
-    ).sort((a, b) => SPLIT_ORDER.indexOf(a) - SPLIT_ORDER.indexOf(b));
-    if (parts.length === 0) continue;
-
-    const key = parts.join('|');
-    if (!templates.has(key)) {
-      templates.set(key, {
-        key,
-        label: splitLabel(parts),
-        session,
-      });
-    }
-  }
-
-  return Array.from(templates.values()).slice(0, 8);
-}
-
-function splitLabel(parts: BodyPart[]): string {
-  const has = (part: BodyPart) => parts.includes(part);
-  if (has('chest') && has('triceps')) return '胸 + 三頭';
-  if (has('back') && has('arms')) return '背中 + 二頭・前腕';
-  if (has('shoulders') && has('arms')) return '肩 + 二頭・前腕';
-  if (has('shoulders') && has('triceps')) return '肩 + 三頭';
-  if (has('legs')) return '脚';
-  if (has('core')) return '腹筋';
-  if (has('chest')) return has('arms') ? '胸 + 腕' : '胸';
-  if (has('back')) return '背中';
-  if (has('shoulders')) return '肩';
-  if (has('triceps')) return '三頭';
-  if (has('arms')) return '二頭・前腕';
-  return parts.map((part) => BODY_PART_LABELS[part]).join(' + ');
+function templateToForm(template: WorkoutTemplate): {
+  mainBodyPart: BodyPart;
+  durationMin: string;
+  memo: string;
+  exercises: ExerciseInput[];
+} {
+  const source = template.session;
+  return {
+    mainBodyPart: source.main_body_part ?? source.exercises[0]?.body_part ?? 'chest',
+    durationMin: source.duration_min ? String(source.duration_min) : '',
+    memo: `${template.label}を${source.date}の最新メニューからコピー`,
+    exercises:
+      source.exercises.length > 0
+        ? source.exercises.map((exercise) => ({
+            name: exercise.name,
+            body_part: exercise.body_part,
+            memo: exercise.memo ?? '',
+            sets: exercise.sets.length
+              ? exercise.sets.map((set) => ({
+                  weight_kg:
+                    set.weight_kg === null ? '' : String(Number(set.weight_kg)),
+                  reps: set.reps === null ? '' : String(Number(set.reps)),
+                  rpe: set.rpe === null ? '' : String(Number(set.rpe)),
+                  rir: set.rir === null ? '' : String(Number(set.rir)),
+                  set_type: set.set_type,
+                  side: set.side,
+                  memo: set.memo ?? '',
+                }))
+              : structuredClone(DEFAULT_EXERCISE.sets),
+          }))
+        : [structuredClone(DEFAULT_EXERCISE)],
+  };
 }
 
 function ExerciseCard({
