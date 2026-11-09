@@ -284,7 +284,7 @@ export function RestTimer() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="fixed bottom-[88px] right-4 z-40 flex h-12 items-center gap-1.5 rounded-full border border-[#a3ff12]/40 bg-[#0b1018] px-4 text-xs font-black text-[#a3ff12] shadow-2xl"
+        className="floating-above-nav fixed bottom-[88px] right-4 z-40 flex h-12 items-center gap-1.5 rounded-full border border-[#a3ff12]/40 bg-[#0b1018] px-4 text-xs font-black text-[#a3ff12] shadow-2xl"
         aria-label="休憩タイマーを開く"
       >
         <Timer size={16} /> 休憩
@@ -293,7 +293,7 @@ export function RestTimer() {
   }
 
   return (
-    <div className="fixed inset-x-4 bottom-[88px] z-40 mx-auto max-w-md rounded-2xl border border-[#a3ff12]/40 bg-[#0b1018] p-4 shadow-2xl">
+    <div className="floating-above-nav fixed inset-x-4 bottom-[88px] z-40 mx-auto max-w-md rounded-2xl border border-[#a3ff12]/40 bg-[#0b1018] p-4 shadow-2xl [@media(max-height:520px)]:p-2.5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-xs font-bold text-slate-300">
           <Timer size={15} className="text-[#a3ff12]" /> 休憩タイマー
@@ -303,7 +303,7 @@ export function RestTimer() {
         </button>
       </div>
       <div
-        className={`my-2 text-center text-5xl font-black tabular-nums ${
+        className={`my-2 text-center text-5xl font-black tabular-nums [@media(max-height:520px)]:my-0 [@media(max-height:520px)]:text-3xl ${
           running ? 'text-white' : left === 0 ? 'text-[#a3ff12]' : 'text-slate-300'
         }`}
       >

@@ -18,6 +18,8 @@ import type { QuickMealItem } from '@/app/actions/quick';
 import { getSessionUserId } from '@/lib/auth';
 import { GoalCheckCard, InsightList, WeeklyReportCard } from '@/components/home/InsightsPanel';
 import { calculate, PERIOD_WEEKS } from '@/lib/calculations';
+import ActivityCard, { type ActivityDay } from '@/components/health/ActivityCard';
+import { googleHealthConfigured } from '@/lib/google-health';
 import {
   findRecentPRs,
   buildBodyPartBalance,
@@ -108,6 +110,8 @@ export default async function Home() {
     workoutSessions,
     conditionsRaw,
     mealDaysRaw,
+    healthConnRaw,
+    wearableRaw,
   ] = await Promise.all([
     sql`select * from profiles where user_id = ${userId} limit 1`,
     sql`
@@ -188,6 +192,17 @@ export default async function Home() {
       where user_id = ${userId} and date >= ${addDays(today, -14)}
       group by date
     `,
+    sql`
+      select (last_synced_at is null or last_synced_at < now() - interval '3 hours') as stale
+      from health_connections where user_id = ${userId}
+    `.catch(() => []),
+    sql`
+      select to_char(date, 'YYYY-MM-DD') as date, steps, total_kcal::float as total_kcal,
+             active_zone_minutes, sleep_minutes, deep_minutes, rem_minutes, exercises
+      from wearable_daily
+      where user_id = ${userId} and date >= ${addDays(today, -7)}
+      order by date
+    `.catch(() => []),
   ]);
 
   const profileRows = profileRowsRaw as unknown as Profile[];
@@ -229,10 +244,10 @@ export default async function Home() {
     todayLog?.weight_kg !== null && todayLog?.weight_kg !== undefined
       ? Number(todayLog.weight_kg)
       : null;
+  // 睡眠時間は Fitbit から自動で入ることがあるので、体調の入力済み判定には使わない
   const hasCondition = Boolean(
     todayLog &&
-      (todayLog.sleep_hours !== null ||
-        todayLog.sleep_quality !== null ||
+      (todayLog.sleep_quality !== null ||
         todayLog.fatigue !== null ||
         todayLog.mood !== null),
   );
@@ -326,6 +341,23 @@ export default async function Home() {
     workoutSessions.filter((s) => s.date === today),
   ).map((t) => ({ label: t.label, setCount: t.session.totalSets }));
 
+  // ---------- Fitbit / Google Health ----------
+  const healthConn = (healthConnRaw as unknown as Array<{ stale: boolean }>)[0];
+  const healthConnected = Boolean(healthConn);
+  const healthStale = healthConnected && healthConn.stale;
+  const wearable = wearableRaw as unknown as ActivityDay[];
+  const activityToday = wearable.find((w) => w.date === today) ?? null;
+  const pastWearable = wearable.filter((w) => w.date < today && w.total_kcal);
+  const pastIntake = pastWearable
+    .map((w) => (mealDaysRaw as unknown as MealDay[]).find((m) => m.date === w.date && m.entries >= 2))
+    .filter((m): m is MealDay => Boolean(m));
+  const avgBurned =
+    pastWearable.length >= 3 && pastIntake.length >= 3
+      ? pastWearable.reduce((s, w) => s + Number(w.total_kcal), 0) / pastWearable.length
+      : null;
+  const avgIntake =
+    avgBurned !== null ? pastIntake.reduce((s, m) => s + m.kcal, 0) / pastIntake.length : null;
+
   // ---------- 気づき・レポート ----------
   const conditions = (conditionsRaw as unknown as DayCondition[]).reverse();
   const mealDays = mealDaysRaw as unknown as MealDay[];
@@ -360,111 +392,140 @@ export default async function Home() {
   );
 
   return (
-    <div className="space-y-4 py-4">
-      {/* ヘッダー：今日のカロリー */}
-      <div className="sport-card-strong p-4">
-        <div className="flex items-baseline justify-between">
-          <div>
-            <div className="sport-kicker">Today</div>
-            <h1 className="text-xl font-black">{formatJaDate(today)}</h1>
-          </div>
-          <Link href="/plan" className="text-xs text-slate-400 underline-offset-2 hover:underline">
-            目標 {Number(profile.target_weight_kg).toFixed(1)}kg / {Number(profile.target_body_fat_pct).toFixed(0)}%
-          </Link>
-        </div>
-
-        {isFreeDay ? (
-          <div className="mt-3 rounded-lg bg-[#a3ff12]/10 px-3 py-2 text-sm font-bold text-[#a3ff12]">
-            🎂 {cheatDayPlan.currentFreeDayLabel ?? 'フリーデイ'}：今日は好きなものを楽しむ日です
-          </div>
-        ) : (
-          <>
-            <div className="mt-3 flex items-end justify-between">
+    <div className="page-wide home-grid py-4">
+      {/* 左カラム（折りたたみ時はこの順で1列に並ぶ。order で並び順を制御） */}
+      <div className="home-col">
+        <div className="order-1 min-w-0 empty:hidden">
+          {/* ヘッダー：今日のカロリー */}
+          <div className="sport-card-strong p-4">
+            <div className="flex items-baseline justify-between">
               <div>
-                <div className="text-[11px] text-slate-400">
-                  {overKcal > 0 ? 'オーバー' : '残り'}
-                </div>
-                <div
-                  className={`text-4xl font-black tabular-nums ${
-                    overKcal > 0 ? 'text-rose-300' : 'text-[#a3ff12]'
-                  }`}
-                >
-                  {Math.round(overKcal > 0 ? overKcal : remainingKcal).toLocaleString()}
-                  <span className="ml-1 text-sm font-semibold text-slate-400">kcal</span>
-                </div>
-                {funExample && (
-                  <div className="text-[11px] text-slate-500">≒ {funExample.display}</div>
-                )}
+                <div className="sport-kicker">Today</div>
+                <h1 className="text-xl font-black">{formatJaDate(today)}</h1>
               </div>
-              <div className="text-right text-xs tabular-nums text-slate-400">
-                {Math.round(mealTotal.calories).toLocaleString()} /{' '}
-                {Math.round(plan.targetCalories).toLocaleString()} kcal
-              </div>
+              <Link href="/plan" className="text-xs text-slate-400 underline-offset-2 hover:underline">
+                目標 {Number(profile.target_weight_kg).toFixed(1)}kg / {Number(profile.target_body_fat_pct).toFixed(0)}%
+              </Link>
             </div>
-            <ProgressBar value={mealTotal.calories} max={plan.targetCalories} />
-            <div className="mt-2 text-[10px] text-slate-500">
-              {isTrainingDay ? '💪 トレ日：炭水化物 +25g（+100kcal）' : '🛌 休養日：炭水化物 -38g（-150kcal）。筋トレを記録するとトレ日の目標に切り替わります'}
-            </div>
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              <Macro label="P" value={mealTotal.protein_g} target={plan.protein_g} color="#a3ff12" />
-              <Macro label="F" value={mealTotal.fat_g} target={plan.fat_g} color="#fbbf24" />
-              <Macro label="C" value={mealTotal.carbs_g} target={plan.carbs_g} color="#20e0ff" />
-            </div>
-          </>
-        )}
-      </div>
 
-      {daysSinceLastLog !== null && daysSinceLastLog > 3 && todayWeight === null && (
-        <div className="rounded-lg border border-amber-300/35 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
-          前回の記録から <b>{daysSinceLastLog}日</b> 空いています。まずは体重だけでもOK、今日から再開しましょう。
+            {isFreeDay ? (
+              <div className="mt-3 rounded-lg bg-[#a3ff12]/10 px-3 py-2 text-sm font-bold text-[#a3ff12]">
+                🎂 {cheatDayPlan.currentFreeDayLabel ?? 'フリーデイ'}：今日は好きなものを楽しむ日です
+              </div>
+            ) : (
+              <>
+                <div className="mt-3 flex items-end justify-between">
+                  <div>
+                    <div className="text-[11px] text-slate-400">
+                      {overKcal > 0 ? 'オーバー' : '残り'}
+                    </div>
+                    <div
+                      className={`text-4xl font-black tabular-nums ${
+                        overKcal > 0 ? 'text-rose-300' : 'text-[#a3ff12]'
+                      }`}
+                    >
+                      {Math.round(overKcal > 0 ? overKcal : remainingKcal).toLocaleString()}
+                      <span className="ml-1 text-sm font-semibold text-slate-400">kcal</span>
+                    </div>
+                    {funExample && (
+                      <div className="text-[11px] text-slate-500">≒ {funExample.display}</div>
+                    )}
+                  </div>
+                  <div className="text-right text-xs tabular-nums text-slate-400">
+                    {Math.round(mealTotal.calories).toLocaleString()} /{' '}
+                    {Math.round(plan.targetCalories).toLocaleString()} kcal
+                  </div>
+                </div>
+                <ProgressBar value={mealTotal.calories} max={plan.targetCalories} />
+                <div className="mt-2 text-[10px] text-slate-500">
+                  {isTrainingDay ? '💪 トレ日：炭水化物 +25g（+100kcal）' : '🛌 休養日：炭水化物 -38g（-150kcal）。筋トレを記録するとトレ日の目標に切り替わります'}
+                </div>
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  <Macro label="P" value={mealTotal.protein_g} target={plan.protein_g} color="#a3ff12" />
+                  <Macro label="F" value={mealTotal.fat_g} target={plan.fat_g} color="#fbbf24" />
+                  <Macro label="C" value={mealTotal.carbs_g} target={plan.carbs_g} color="#20e0ff" />
+                </div>
+              </>
+            )}
+          </div>
         </div>
-      )}
-
-      <InsightList insights={insights} />
-
-      <WeightQuickCard
-        todayWeight={todayWeight}
-        lastWeight={weightsDesc[0]?.weight ?? Number(profile.current_weight_kg)}
-        hasCondition={hasCondition}
-        recentlyLogged={daysSinceLastLog !== null && daysSinceLastLog <= 7}
-        ma7={latestPoint?.ma7 ?? null}
-        ma7WeeklyDelta={ma7WeeklyDelta}
-      />
-
-      <WeightTrendMini
-        points={chartPoints}
-        targetWeight={Number(profile.target_weight_kg)}
-      />
-
-      <QuickMeals
-        frequent={frequentRaw as unknown as QuickMealItem[]}
-        sets={setsRaw as unknown as MealSetView[]}
-        today={meals}
-        currentMealType={currentMealType}
-        savableTypes={savableTypes}
-        roughItems={roughItems}
-      />
-
-      <WaterQuick totalMl={hydrationTotal} />
-
-      <WorkoutQuick
-        templates={templates}
-        todaySessions={todaySessions}
-        sessionsThisWeek={workoutStats.sessionsThisWeek}
-      />
-
-      {goal && <GoalCheckCard goal={goal} />}
-
-      {showReport && <WeeklyReportCard report={report} />}
-
-      {!isFreeDay && cheatDayPlan.nextDate && (
-        <Link
-          href="/calendar"
-          className="block text-center text-xs text-slate-500 underline-offset-2 hover:underline"
-        >
-          次のフリーデイ：{cheatDayPlan.nextDate}
-        </Link>
-      )}
+        <div className="order-2 min-w-0 empty:hidden">
+          {daysSinceLastLog !== null && daysSinceLastLog > 3 && todayWeight === null && (
+            <div className="rounded-lg border border-amber-300/35 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
+              前回の記録から <b>{daysSinceLastLog}日</b> 空いています。まずは体重だけでもOK、今日から再開しましょう。
+            </div>
+          )}
+        </div>
+        <div className="order-3 min-w-0 empty:hidden">
+          <InsightList insights={insights} />
+        </div>
+        <div className="order-4 min-w-0 empty:hidden">
+          <WeightQuickCard
+            todayWeight={todayWeight}
+            lastWeight={weightsDesc[0]?.weight ?? Number(profile.current_weight_kg)}
+            hasCondition={hasCondition}
+            recentlyLogged={daysSinceLastLog !== null && daysSinceLastLog <= 7}
+            ma7={latestPoint?.ma7 ?? null}
+            ma7WeeklyDelta={ma7WeeklyDelta}
+          />
+        </div>
+        <div className="order-5 min-w-0 empty:hidden">
+          <ActivityCard
+            connected={healthConnected}
+            configured={googleHealthConfigured()}
+            stale={healthStale}
+            today={activityToday}
+            avgBurned={avgBurned}
+            avgIntake={avgIntake}
+            intakeToday={mealTotal.calories}
+          />
+        </div>
+        <div className="order-6 min-w-0 empty:hidden">
+          <WeightTrendMini
+            points={chartPoints}
+            targetWeight={Number(profile.target_weight_kg)}
+          />
+        </div>
+        <div className="order-10 min-w-0 empty:hidden">
+          {goal && <GoalCheckCard goal={goal} />}
+        </div>
+        <div className="order-11 min-w-0 empty:hidden">
+          {showReport && <WeeklyReportCard report={report} />}
+        </div>
+      </div>
+      {/* 右カラム */}
+      <div className="home-col">
+        <div className="order-7 min-w-0 empty:hidden">
+          <QuickMeals
+            frequent={frequentRaw as unknown as QuickMealItem[]}
+            sets={setsRaw as unknown as MealSetView[]}
+            today={meals}
+            currentMealType={currentMealType}
+            savableTypes={savableTypes}
+            roughItems={roughItems}
+          />
+        </div>
+        <div className="order-8 min-w-0 empty:hidden">
+          <WaterQuick totalMl={hydrationTotal} />
+        </div>
+        <div className="order-9 min-w-0 empty:hidden">
+          <WorkoutQuick
+            templates={templates}
+            todaySessions={todaySessions}
+            sessionsThisWeek={workoutStats.sessionsThisWeek}
+          />
+        </div>
+        <div className="order-12 min-w-0 empty:hidden">
+          {!isFreeDay && cheatDayPlan.nextDate && (
+            <Link
+              href="/calendar"
+              className="block text-center text-xs text-slate-500 underline-offset-2 hover:underline"
+            >
+              次のフリーデイ：{cheatDayPlan.nextDate}
+            </Link>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

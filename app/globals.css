@@ -33,7 +33,7 @@ body {
 }
 
 body {
-  padding-bottom: 80px;
+  padding-bottom: calc(80px + env(safe-area-inset-bottom));
   background:
     radial-gradient(circle at 20% 0%, rgba(163, 255, 18, 0.12), transparent 32rem),
     radial-gradient(circle at 100% 8%, rgba(32, 224, 255, 0.1), transparent 28rem),
@@ -41,9 +41,55 @@ body {
   min-height: 100vh;
 }
 
-@media (min-width: 768px) {
+/*
+ * Galaxy Z Fold 8 などの折りたたみ端末向けレイアウト
+ * - カバー画面 縦: 約475px幅 → 1カラム
+ * - カバー画面 横 / メイン画面 縦: 約700〜750px幅 → ホームは2カラム
+ * - メイン画面 横: 約930px幅 → ホームは2カラム（広め）
+ * ホーム以外のページは読みやすさのため最大 42rem で中央寄せ
+ */
+.page-main > :not(.page-wide) {
+  max-width: 42rem;
+  margin-inline: auto;
+}
+
+.home-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.home-col {
+  /* 1列表示では列の枠を消して、各カードを order 順に並べる */
+  display: contents;
+}
+
+@media (min-width: 680px) {
+  .home-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+  }
+  .home-col {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    min-width: 0;
+  }
+}
+
+/* 横向きで高さが低いとき（カバー画面の横持ちなど）: 下部ナビを薄くする */
+@media (orientation: landscape) and (max-height: 520px) {
   body {
-    padding-bottom: 0;
+    padding-bottom: calc(56px + env(safe-area-inset-bottom));
+  }
+  .bottom-nav {
+    height: 52px;
+  }
+  .bottom-nav .nav-label {
+    display: none;
+  }
+  .floating-above-nav {
+    bottom: calc(60px + env(safe-area-inset-bottom)) !important;
   }
 }
 

@@ -299,7 +299,7 @@ export default function QuickMeals({
       )}
 
       {toast && (
-        <div className="fixed inset-x-4 bottom-[88px] z-50 mx-auto flex max-w-md items-center justify-between gap-3 rounded-lg border border-[#a3ff12]/40 bg-[#0b1018] px-4 py-3 text-sm shadow-2xl">
+        <div className="floating-above-nav fixed inset-x-4 bottom-[88px] z-50 mx-auto flex max-w-md items-center justify-between gap-3 rounded-lg border border-[#a3ff12]/40 bg-[#0b1018] px-4 py-3 text-sm shadow-2xl">
           <span className="min-w-0 truncate">✓ {toast.text}</span>
           {toast.ids.length > 0 && (
           <button
