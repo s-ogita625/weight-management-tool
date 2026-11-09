@@ -18,6 +18,8 @@ import type { QuickMealItem } from '@/app/actions/quick';
 import { getSessionUserId } from '@/lib/auth';
 import { GoalCheckCard, InsightList, WeeklyReportCard } from '@/components/home/InsightsPanel';
 import { calculate, PERIOD_WEEKS } from '@/lib/calculations';
+import ActivityCard, { type ActivityDay } from '@/components/health/ActivityCard';
+import { googleHealthConfigured } from '@/lib/google-health';
 import {
   findRecentPRs,
   buildBodyPartBalance,
@@ -108,6 +110,8 @@ export default async function Home() {
     workoutSessions,
     conditionsRaw,
     mealDaysRaw,
+    healthConnRaw,
+    wearableRaw,
   ] = await Promise.all([
     sql`select * from profiles where user_id = ${userId} limit 1`,
     sql`
@@ -188,6 +192,17 @@ export default async function Home() {
       where user_id = ${userId} and date >= ${addDays(today, -14)}
       group by date
     `,
+    sql`
+      select (last_synced_at is null or last_synced_at < now() - interval '3 hours') as stale
+      from health_connections where user_id = ${userId}
+    `.catch(() => []),
+    sql`
+      select to_char(date, 'YYYY-MM-DD') as date, steps, total_kcal::float as total_kcal,
+             active_zone_minutes, sleep_minutes, deep_minutes, rem_minutes, exercises
+      from wearable_daily
+      where user_id = ${userId} and date >= ${addDays(today, -7)}
+      order by date
+    `.catch(() => []),
   ]);
 
   const profileRows = profileRowsRaw as unknown as Profile[];
@@ -229,10 +244,10 @@ export default async function Home() {
     todayLog?.weight_kg !== null && todayLog?.weight_kg !== undefined
       ? Number(todayLog.weight_kg)
       : null;
+  // 睡眠時間は Fitbit から自動で入ることがあるので、体調の入力済み判定には使わない
   const hasCondition = Boolean(
     todayLog &&
-      (todayLog.sleep_hours !== null ||
-        todayLog.sleep_quality !== null ||
+      (todayLog.sleep_quality !== null ||
         todayLog.fatigue !== null ||
         todayLog.mood !== null),
   );
@@ -325,6 +340,23 @@ export default async function Home() {
   const todaySessions = buildSplitTemplates(
     workoutSessions.filter((s) => s.date === today),
   ).map((t) => ({ label: t.label, setCount: t.session.totalSets }));
+
+  // ---------- Fitbit / Google Health ----------
+  const healthConn = (healthConnRaw as unknown as Array<{ stale: boolean }>)[0];
+  const healthConnected = Boolean(healthConn);
+  const healthStale = healthConnected && healthConn.stale;
+  const wearable = wearableRaw as unknown as ActivityDay[];
+  const activityToday = wearable.find((w) => w.date === today) ?? null;
+  const pastWearable = wearable.filter((w) => w.date < today && w.total_kcal);
+  const pastIntake = pastWearable
+    .map((w) => (mealDaysRaw as unknown as MealDay[]).find((m) => m.date === w.date && m.entries >= 2))
+    .filter((m): m is MealDay => Boolean(m));
+  const avgBurned =
+    pastWearable.length >= 3 && pastIntake.length >= 3
+      ? pastWearable.reduce((s, w) => s + Number(w.total_kcal), 0) / pastWearable.length
+      : null;
+  const avgIntake =
+    avgBurned !== null ? pastIntake.reduce((s, m) => s + m.kcal, 0) / pastIntake.length : null;
 
   // ---------- 気づき・レポート ----------
   const conditions = (conditionsRaw as unknown as DayCondition[]).reverse();
@@ -438,21 +470,32 @@ export default async function Home() {
           />
         </div>
         <div className="order-5 min-w-0 empty:hidden">
+          <ActivityCard
+            connected={healthConnected}
+            configured={googleHealthConfigured()}
+            stale={healthStale}
+            today={activityToday}
+            avgBurned={avgBurned}
+            avgIntake={avgIntake}
+            intakeToday={mealTotal.calories}
+          />
+        </div>
+        <div className="order-6 min-w-0 empty:hidden">
           <WeightTrendMini
             points={chartPoints}
             targetWeight={Number(profile.target_weight_kg)}
           />
         </div>
-        <div className="order-9 min-w-0 empty:hidden">
+        <div className="order-10 min-w-0 empty:hidden">
           {goal && <GoalCheckCard goal={goal} />}
         </div>
-        <div className="order-10 min-w-0 empty:hidden">
+        <div className="order-11 min-w-0 empty:hidden">
           {showReport && <WeeklyReportCard report={report} />}
         </div>
       </div>
       {/* 右カラム */}
       <div className="home-col">
-        <div className="order-6 min-w-0 empty:hidden">
+        <div className="order-7 min-w-0 empty:hidden">
           <QuickMeals
             frequent={frequentRaw as unknown as QuickMealItem[]}
             sets={setsRaw as unknown as MealSetView[]}
@@ -462,17 +505,17 @@ export default async function Home() {
             roughItems={roughItems}
           />
         </div>
-        <div className="order-7 min-w-0 empty:hidden">
+        <div className="order-8 min-w-0 empty:hidden">
           <WaterQuick totalMl={hydrationTotal} />
         </div>
-        <div className="order-8 min-w-0 empty:hidden">
+        <div className="order-9 min-w-0 empty:hidden">
           <WorkoutQuick
             templates={templates}
             todaySessions={todaySessions}
             sessionsThisWeek={workoutStats.sessionsThisWeek}
           />
         </div>
-        <div className="order-11 min-w-0 empty:hidden">
+        <div className="order-12 min-w-0 empty:hidden">
           {!isFreeDay && cheatDayPlan.nextDate && (
             <Link
               href="/calendar"

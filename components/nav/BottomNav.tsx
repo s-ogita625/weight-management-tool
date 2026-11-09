@@ -15,6 +15,7 @@ import {
   Sparkles,
   Sunrise,
   Utensils,
+  Watch,
   X,
   type LucideIcon,
 } from 'lucide-react';
@@ -45,6 +46,7 @@ const moreItems: NavItem[] = [
   { href: '/history', label: '食事履歴', icon: History },
   { href: '/coach', label: 'AIコーチング', icon: Bot },
   { href: '/chat', label: 'AIチャット', icon: MessageCircle },
+  { href: '/settings/health', label: 'Fitbit 連携', icon: Watch },
   { href: '/onboarding', label: 'プロフィール編集', icon: Settings },
 ];
 
