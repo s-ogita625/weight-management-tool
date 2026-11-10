@@ -1,7 +1,6 @@
 'use client';
 
 import { Droplets } from 'lucide-react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTransition } from 'react';
 import { quickAddWaterAction } from '@/app/actions/quick';
@@ -21,7 +20,7 @@ export default function WaterQuick({ totalMl }: { totalMl: number }) {
 
   return (
     <section className="sport-card flex items-center gap-3 p-3">
-      <Link href="/hydration" className="flex min-w-0 flex-1 items-center gap-2">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-black/25 text-[#20e0ff] ring-1 ring-white/10">
           <Droplets size={17} />
         </span>
@@ -31,7 +30,7 @@ export default function WaterQuick({ totalMl }: { totalMl: number }) {
             {(totalMl / 1000).toFixed(1)}L
           </span>
         </span>
-      </Link>
+      </div>
       {[200, 500].map((ml) => (
         <button
           key={ml}

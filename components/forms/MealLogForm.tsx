@@ -47,7 +47,6 @@ export default function MealLogForm() {
   const [protein, setProtein] = useState<string>('0');
   const [fat, setFat] = useState<string>('0');
   const [carbs, setCarbs] = useState<string>('0');
-  const [memo, setMemo] = useState<string>('');
   const [appliedFromSuggestion, setAppliedFromSuggestion] = useState<
     string | null
   >(null);
@@ -61,7 +60,6 @@ export default function MealLogForm() {
     setProtein('0');
     setFat('0');
     setCarbs('0');
-    setMemo('');
     setAppliedFromSuggestion(null);
   };
 
@@ -221,18 +219,6 @@ export default function MealLogForm() {
         value={carbs}
         onChange={setCarbs}
       />
-
-      <div>
-        <label className="block text-sm font-medium mb-1">メモ（任意）</label>
-        <textarea
-          name="memo"
-          rows={2}
-          value={memo}
-          onChange={(e) => setMemo(e.target.value)}
-          className="w-full px-4 py-3 rounded-xl border border-gray-300 bg-white"
-          placeholder="満腹度、気分、補足など"
-        />
-      </div>
 
       {state && 'error' in state && state.error && (
         <p className="text-sm text-red-600">{state.error}</p>

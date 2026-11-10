@@ -58,6 +58,10 @@ export async function saveDailyLogAction(_prev: unknown, formData: FormData) {
   // Fitbit 連携中は睡眠欄を出さないので、送られてこなければ既存の値を残す
   const sleepProvided = formData.has('sleep_hours');
   const sleepQualityProvided = formData.has('sleep_quality');
+  // 便通・メモ・追加項目は入力欄をなくしたので、送られてこなければ既存の値を残す
+  const bowelProvided = formData.has('bowel');
+  const memoProvided = formData.has('memo');
+  const customProvided = formData.has('custom_key');
 
   // カスタムフィールド: custom_keys[] と custom_values[] のペアで送信される想定
   const customKeys = formData.getAll('custom_key').map((v) => String(v));
@@ -112,9 +116,9 @@ export async function saveDailyLogAction(_prev: unknown, formData: FormData) {
       sleep_quality = case when ${sleepQualityProvided} then excluded.sleep_quality else daily_logs.sleep_quality end,
       fatigue = excluded.fatigue,
       mood = excluded.mood,
-      bowel = excluded.bowel,
-      memo = excluded.memo,
-      custom_fields = excluded.custom_fields
+      bowel = case when ${bowelProvided} then excluded.bowel else daily_logs.bowel end,
+      memo = case when ${memoProvided} then excluded.memo else daily_logs.memo end,
+      custom_fields = case when ${customProvided} then excluded.custom_fields else daily_logs.custom_fields end
   `;
 
   // プロフィールの現在体重も最新値に同期（任意機能）

@@ -17,7 +17,6 @@ import { useActionState, useEffect, useMemo, useState } from 'react';
 import {
   addWorkoutSessionAction,
   deleteWorkoutSessionAction,
-  saveWorkoutRoutineAction,
 } from '@/app/actions/workout';
 import { dateInJST, timeInJST } from '@/lib/date';
 import { buildSplitTemplates, type WorkoutTemplate } from '@/lib/workout-templates';
@@ -38,8 +37,6 @@ import {
 import {
   BODY_PART_ICONS,
   BODY_PART_LABELS,
-  WORKOUT_SET_TYPE_LABELS,
-  WORKOUT_SIDE_LABELS,
   type BodyPart,
   type WorkoutSessionDetail,
   type WorkoutSetType,
@@ -77,8 +74,6 @@ interface Props {
 }
 
 const BODY_PARTS = Object.keys(BODY_PART_LABELS) as BodyPart[];
-const SET_TYPES = Object.keys(WORKOUT_SET_TYPE_LABELS) as WorkoutSetType[];
-const SIDES = Object.keys(WORKOUT_SIDE_LABELS) as WorkoutSide[];
 const DEFAULT_EXERCISE: ExerciseInput = {
   name: '',
   body_part: 'chest',
@@ -103,10 +98,6 @@ export default function WorkoutView({ sessions, stats, initialCopyKey }: Props) 
     addWorkoutSessionAction,
     null,
   );
-  const [routineState, routineAction, routinePending] = useActionState(
-    saveWorkoutRoutineAction,
-    null,
-  );
   const [date, setDate] = useState(dateInJST());
   const [startTime, setStartTime] = useState(timeInJST());
   const templates = useMemo(() => buildSplitTemplates(sessions), [sessions]);
@@ -123,7 +114,6 @@ export default function WorkoutView({ sessions, stats, initialCopyKey }: Props) 
   );
   const [effort, setEffort] = useState('7');
   const [memo, setMemo] = useState(initialForm?.memo ?? '');
-  const [routineName, setRoutineName] = useState('');
   const [exercises, setExercises] = useState<ExerciseInput[]>(
     initialForm?.exercises ?? [structuredClone(DEFAULT_EXERCISE)],
   );
@@ -166,11 +156,6 @@ export default function WorkoutView({ sessions, stats, initialCopyKey }: Props) 
     }
   }, [state, router]);
 
-  useEffect(() => {
-    if (routineState && 'ok' in routineState && routineState.ok) {
-      router.refresh();
-    }
-  }, [routineState, router]);
 
   const payload = useMemo(
     () =>
@@ -499,36 +484,6 @@ export default function WorkoutView({ sessions, stats, initialCopyKey }: Props) 
             </button>
           </form>
 
-          <form action={routineAction} className="sport-card space-y-3 p-4">
-            <input type="hidden" name="payload" value={payload} />
-            <input type="hidden" name="main_body_part" value={mainBodyPart} />
-            <input type="hidden" name="memo" value={memo} />
-            <label className="block text-sm font-bold text-slate-200">
-              今の内容をルーティン保存
-            </label>
-            <div className="flex gap-2">
-              <input
-                name="routine_name"
-                value={routineName}
-                onChange={(e) => setRoutineName(e.target.value)}
-                placeholder="例: 胸の日A"
-                className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black/30 px-3 text-sm text-white outline-none focus:border-[#a3ff12]"
-              />
-              <button
-                type="submit"
-                disabled={routinePending}
-                className="rounded-lg bg-white/10 px-3 text-sm font-bold text-[#a3ff12] disabled:opacity-60"
-              >
-                保存
-              </button>
-            </div>
-            {routineState && 'error' in routineState && (
-              <p className="text-xs text-rose-300">{routineState.error}</p>
-            )}
-            {routineState && 'ok' in routineState && routineState.ok && (
-              <p className="text-xs text-[#a3ff12]">ルーティンを保存しました。</p>
-            )}
-          </form>
         </div>
       )}
 
@@ -685,11 +640,12 @@ function templateToForm(template: WorkoutTemplate): {
                   weight_kg:
                     set.weight_kg === null ? '' : String(Number(set.weight_kg)),
                   reps: set.reps === null ? '' : String(Number(set.reps)),
-                  rpe: set.rpe === null ? '' : String(Number(set.rpe)),
-                  rir: set.rir === null ? '' : String(Number(set.rir)),
-                  set_type: set.set_type,
-                  side: set.side,
-                  memo: set.memo ?? '',
+                  // RPE・RIR・セット種別・左右・セットメモは入力しなくなったので引き継がない
+                  rpe: '',
+                  rir: '',
+                  set_type: 'working' as WorkoutSetType,
+                  side: 'both' as WorkoutSide,
+                  memo: '',
                 }))
               : structuredClone(DEFAULT_EXERCISE.sets),
           }))
@@ -804,55 +760,7 @@ function ExerciseCard({
                 onChange={(value) => onPatchSet(setIndex, { reps: value })}
                 step="1"
               />
-              <MiniNumber
-                label="RPE"
-                value={set.rpe}
-                onChange={(value) => onPatchSet(setIndex, { rpe: value })}
-                step="0.5"
-              />
-              <MiniNumber
-                label="RIR"
-                value={set.rir}
-                onChange={(value) => onPatchSet(setIndex, { rir: value })}
-                step="0.5"
-              />
             </div>
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              <select
-                value={set.set_type}
-                onChange={(e) =>
-                  onPatchSet(setIndex, {
-                    set_type: e.target.value as WorkoutSetType,
-                  })
-                }
-                className="sport-input h-10 text-xs"
-              >
-                {SET_TYPES.map((type) => (
-                  <option key={type} value={type}>
-                    {WORKOUT_SET_TYPE_LABELS[type]}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={set.side}
-                onChange={(e) =>
-                  onPatchSet(setIndex, { side: e.target.value as WorkoutSide })
-                }
-                className="sport-input h-10 text-xs"
-              >
-                {SIDES.map((side) => (
-                  <option key={side} value={side}>
-                    {WORKOUT_SIDE_LABELS[side]}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <input
-              value={set.memo}
-              onChange={(e) => onPatchSet(setIndex, { memo: e.target.value })}
-              placeholder="セットメモ（任意）"
-              className="mt-2 h-10 w-full rounded-lg border border-white/10 bg-black/25 px-3 text-xs text-white outline-none placeholder:text-slate-500 focus:border-[#a3ff12]"
-            />
           </div>
         ))}
       </div>

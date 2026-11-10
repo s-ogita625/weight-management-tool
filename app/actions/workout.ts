@@ -210,55 +210,9 @@ export async function deleteWorkoutSessionAction(id: string) {
   revalidateWorkoutPaths();
 }
 
-export async function saveWorkoutRoutineAction(
-  _prev: unknown,
-  formData: FormData,
-) {
-  const userId = await getSessionUserId();
-  if (!userId) redirect('/login');
-
-  const name = str(formData, 'routine_name').slice(0, 80);
-  if (!name) return { error: 'ルーティン名が必要です' };
-
-  const mainBodyPartRaw = str(formData, 'main_body_part');
-  const mainBodyPart = BODY_PARTS.has(mainBodyPartRaw as BodyPart)
-    ? (mainBodyPartRaw as BodyPart)
-    : null;
-  const memo = cleanMemo(formData.get('memo'), 500);
-  const payload = parsePayload(formData);
-  if ('error' in payload) return payload;
-
-  const routineRows = await sql`
-    insert into workout_routines (user_id, name, main_body_part, memo)
-    values (${userId}, ${name}, ${mainBodyPart}, ${memo})
-    returning id
-  `;
-  const routineId = (routineRows as unknown as Array<{ id: string }>)[0]?.id;
-  if (!routineId) return { error: 'ルーティン保存に失敗しました' };
-
-  let order = 1;
-  for (const exercise of payload.exercises) {
-    const firstSet = exercise.sets[0];
-    await sql`
-      insert into workout_routine_exercises (
-        routine_id, exercise_order, name, body_part,
-        target_sets, target_reps, memo
-      ) values (
-        ${routineId}, ${order}, ${exercise.name}, ${exercise.body_part},
-        ${exercise.sets.length}, ${firstSet?.reps ?? null}, ${exercise.memo}
-      )
-    `;
-    order += 1;
-  }
-
-  revalidateWorkoutPaths();
-  return { ok: true as const };
-}
-
 function revalidateWorkoutPaths() {
   revalidatePath('/workout');
   revalidatePath('/trend');
   revalidatePath('/coach');
-  revalidatePath('/chat');
   revalidatePath('/');
 }

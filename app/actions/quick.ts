@@ -203,10 +203,9 @@ export async function quickSaveWeightAction(
     await sql`
       update daily_logs d set
         fatigue = coalesce(d.fatigue, p.fatigue),
-        mood = coalesce(d.mood, p.mood),
-        bowel = coalesce(d.bowel, p.bowel)
+        mood = coalesce(d.mood, p.mood)
       from (
-        select fatigue, mood, bowel
+        select fatigue, mood
         from daily_logs
         where user_id = ${userId} and date < ${today}
           and (fatigue is not null or mood is not null)
@@ -245,7 +244,6 @@ export async function quickAddWaterAction(
     values (${userId}, ${resolveAt(at).date}, ${resolveAt(at).time}, 'water', ${amount})
   `;
   revalidatePath('/');
-  revalidatePath('/hydration');
   return { ok: true };
 }
 
