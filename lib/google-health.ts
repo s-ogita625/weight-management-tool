@@ -191,7 +191,7 @@ function chunks(start: string, endExclusive: string, size: number): Array<[strin
 
 /**
  * 直近 days 日分を同期して wearable_daily に保存する。
- * 睡眠時間は、朝の記録（daily_logs.sleep_hours）が空の日だけ自動で埋める。
+ * 睡眠時間は Fitbit の値で daily_logs.sleep_hours を上書きする（連携中は手入力欄なし）。
  */
 export async function syncGoogleHealth(userId: string, days = 7): Promise<{ days: number }> {
   try {
@@ -270,7 +270,7 @@ export async function syncGoogleHealth(userId: string, days = 7): Promise<{ days
           insert into daily_logs (user_id, date, sleep_hours)
           values (${userId}, ${d}, ${hours})
           on conflict (user_id, date) do update
-            set sleep_hours = coalesce(daily_logs.sleep_hours, excluded.sleep_hours)
+            set sleep_hours = excluded.sleep_hours -- 連携中は Fitbit の値を正とする
         `;
       }
       saved++;

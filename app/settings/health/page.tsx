@@ -58,7 +58,7 @@ export default async function HealthSettingsPage({
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-slate-300">
           Fitbit Air などで計測した歩数・消費カロリー・睡眠・運動を、Google Health API から毎朝7時に自動で取り込みます。
-          睡眠時間は「朝の記録」が空の日だけ自動で入ります。
+          連携中は睡眠の入力欄がなくなり、睡眠時間は Fitbit の値で自動記録されます。
         </p>
       </div>
 

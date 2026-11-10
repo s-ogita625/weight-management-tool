@@ -55,6 +55,9 @@ export async function saveDailyLogAction(_prev: unknown, formData: FormData) {
   const bowel =
     bowelRaw && VALID_BOWEL.has(bowelRaw as Bowel) ? (bowelRaw as Bowel) : null;
   const memo = String(formData.get('memo') ?? '').trim() || null;
+  // Fitbit 連携中は睡眠欄を出さないので、送られてこなければ既存の値を残す
+  const sleepProvided = formData.has('sleep_hours');
+  const sleepQualityProvided = formData.has('sleep_quality');
 
   // カスタムフィールド: custom_keys[] と custom_values[] のペアで送信される想定
   const customKeys = formData.getAll('custom_key').map((v) => String(v));
@@ -105,8 +108,8 @@ export async function saveDailyLogAction(_prev: unknown, formData: FormData) {
     on conflict (user_id, date) do update set
       weight_kg = excluded.weight_kg,
       body_fat_pct = excluded.body_fat_pct,
-      sleep_hours = excluded.sleep_hours,
-      sleep_quality = excluded.sleep_quality,
+      sleep_hours = case when ${sleepProvided} then excluded.sleep_hours else daily_logs.sleep_hours end,
+      sleep_quality = case when ${sleepQualityProvided} then excluded.sleep_quality else daily_logs.sleep_quality end,
       fatigue = excluded.fatigue,
       mood = excluded.mood,
       bowel = excluded.bowel,

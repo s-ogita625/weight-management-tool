@@ -118,7 +118,7 @@ export default function WeightQuickCard({
                 onChange={(e) => setCopyCondition(e.target.checked)}
                 className="h-4 w-4 accent-[#a3ff12]"
               />
-              体調はいつも通り（前回の睡眠・気分などをコピー）
+              体調はいつも通り（前回の疲労・気分をコピー）
             </label>
           )}
           <button

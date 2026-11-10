@@ -30,12 +30,27 @@ export default async function MorningPage() {
            sleep_hours, sleep_quality, fatigue, mood, bowel
     from daily_logs
     where user_id = ${userId} and date < ${today}
-      and (sleep_hours is not null or sleep_quality is not null
-           or fatigue is not null or mood is not null)
+      and (fatigue is not null or mood is not null)
     order by date desc
     limit 1
   `) as unknown as DailyLog[];
   const previous = prevRows[0] ?? null;
+
+  // Fitbit 連携中なら睡眠は自動取得（入力欄を出さない）
+  const [connRows, sleepRows] = await Promise.all([
+    sql`select 1 from health_connections where user_id = ${userId}`.catch(() => []),
+    sql`
+      select sleep_minutes, deep_minutes, rem_minutes from wearable_daily
+      where user_id = ${userId} and date = ${today}
+    `.catch(() => []),
+  ]);
+  const s = (sleepRows as unknown as Array<{ sleep_minutes: number | null; deep_minutes: number | null; rem_minutes: number | null }>)[0];
+  const fitbitSleep = {
+    connected: (connRows as unknown[]).length > 0,
+    minutes: s?.sleep_minutes ?? null,
+    deep: s?.deep_minutes ?? null,
+    rem: s?.rem_minutes ?? null,
+  };
 
   return (
     <div className="py-4 space-y-4">
@@ -44,7 +59,7 @@ export default async function MorningPage() {
         体重だけでもOK。体調がいつも通りなら下のボタンで前回の内容をコピーできます。
         {initial ? ' （本日分は更新します）' : ''}
       </p>
-      <DailyLogForm initial={initial} previous={previous} />
+      <DailyLogForm initial={initial} previous={previous} fitbitSleep={fitbitSleep} />
     </div>
   );
 }
