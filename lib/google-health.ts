@@ -10,6 +10,7 @@ import 'server-only';
 import { dateInJST } from '@/lib/date';
 import { sql } from '@/lib/db';
 import {
+  bodyFatByDate,
   distanceToKm,
   exercisesByDate,
   hrvByDate,
@@ -17,6 +18,8 @@ import {
   rollupByDate,
   sleepByWakeDate,
   toCivilDate,
+  weightByDate,
+  type BodySample,
   type WearableDay,
 } from '@/lib/google-health-parse';
 import { decryptSecret, encryptSecret } from '@/lib/secret-box';
@@ -242,6 +245,8 @@ export async function syncGoogleHealth(userId: string, days = 7): Promise<{ days
     `) as unknown as Array<{ scopes: string }>;
     let rhr = new Map<string, number>();
     let hrv = new Map<string, number>();
+    let weights = new Map<string, BodySample>();
+    let bodyFat = new Map<string, BodySample>();
     if (hasHealthMetricsScope(scopeRows[0]?.scopes)) {
       const [rhrPoints, hrvPoints] = await Promise.all([
         listAll(token, 'daily-resting-heart-rate', `daily_resting_heart_rate.date >= "${start}" AND daily_resting_heart_rate.date < "${endEx}"`),
@@ -249,6 +254,32 @@ export async function syncGoogleHealth(userId: string, days = 7): Promise<{ days
       ]);
       rhr = restingHrByDate(rhrPoints as never);
       hrv = hrvByDate(hrvPoints as never);
+
+      // 体重・体脂肪（体組成計アプリ → Health Connect → Google Health）
+      // アプリでの最後の体重記録より後が抜けていれば、最大180日さかのぼって埋める
+      const lastRows = (await sql`
+        select to_char(max(date), 'YYYY-MM-DD') as last from daily_logs
+        where user_id = ${userId} and weight_kg is not null
+      `) as unknown as Array<{ last: string | null }>;
+      const lastWeight = lastRows[0]?.last ?? null;
+      const floor = addDays(today, -180);
+      let bodyStart = start;
+      if (!lastWeight || lastWeight < start) {
+        bodyStart = lastWeight && addDays(lastWeight, 1) > floor ? addDays(lastWeight, 1) : floor;
+      }
+      const backfill = bodyStart < start;
+      const [weightPoints, fatPoints] = await Promise.all([
+        listAll(token, 'weight', `weight.sample_time.civil_time >= "${bodyStart}" AND weight.sample_time.civil_time < "${endEx}"`, backfill ? 16 : 4).catch((e) => {
+          console.error('[google-health] weight', e);
+          return [];
+        }),
+        listAll(token, 'body-fat', `body_fat.sample_time.civil_time >= "${bodyStart}" AND body_fat.sample_time.civil_time < "${endEx}"`, backfill ? 16 : 4).catch((e) => {
+          console.error('[google-health] body-fat', e);
+          return [];
+        }),
+      ]);
+      weights = weightByDate(weightPoints as never);
+      bodyFat = bodyFatByDate(fatPoints as never);
     }
 
     let saved = 0;
@@ -306,6 +337,28 @@ export async function syncGoogleHealth(userId: string, days = 7): Promise<{ days
         `;
       }
       saved++;
+    }
+
+    // 体重・体脂肪は daily_logs へ。アプリで手入力した値があればそちらを優先（上書きしない）
+    const bodyDates = new Set([...weights.keys(), ...bodyFat.keys()]);
+    for (const d of bodyDates) {
+      await sql`
+        insert into daily_logs (user_id, date, weight_kg, body_fat_pct)
+        values (${userId}, ${d}, ${weights.get(d)?.value ?? null}, ${bodyFat.get(d)?.value ?? null})
+        on conflict (user_id, date) do update set
+          weight_kg = coalesce(daily_logs.weight_kg, excluded.weight_kg),
+          body_fat_pct = coalesce(daily_logs.body_fat_pct, excluded.body_fat_pct)
+      `;
+    }
+    if (weights.size > 0) {
+      await sql`
+        update profiles set current_weight_kg = (
+          select weight_kg from daily_logs
+          where user_id = ${userId} and weight_kg is not null
+          order by date desc limit 1
+        ), updated_at = now()
+        where user_id = ${userId}
+      `;
     }
 
     await sql`update health_connections set last_synced_at = now(), last_error = null where user_id = ${userId}`;

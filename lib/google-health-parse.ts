@@ -240,3 +240,67 @@ export function hrvByDate(points: DailyMetricPoint[] | undefined): Map<string, n
   }
   return out;
 }
+
+// ------------------------------------------------------------------
+// 体重・体脂肪（eufyLife など → Health Connect → Google Health）
+// ------------------------------------------------------------------
+
+interface SampleTime {
+  physicalTime?: string;
+  civilTime?: { date?: Partial<CivilDate>; time?: { hours?: number; minutes?: number } };
+}
+
+interface BodyPoint {
+  weight?: { weightGrams?: string | number; sampleTime?: SampleTime };
+  bodyFat?: { percentage?: string | number; sampleTime?: SampleTime };
+}
+
+export interface BodySample {
+  /** 測定日（JST） */
+  date: string;
+  /** 測定時刻（ISO, UTC） */
+  at: string;
+  value: number;
+}
+
+function sampleDate(t: SampleTime | undefined): { date: string; at: string } | null {
+  const date = civilToIso(t?.civilTime) ?? jstDate(t?.physicalTime);
+  if (!date) return null;
+  return { date, at: t?.physicalTime ?? `${date}T00:00:00Z` };
+}
+
+/** 1日に複数回測ったときは、その日いちばん早い（朝の）測定を採用する */
+function earliestByDate(samples: BodySample[]): Map<string, BodySample> {
+  const out = new Map<string, BodySample>();
+  for (const s of samples) {
+    const cur = out.get(s.date);
+    if (!cur || s.at < cur.at) out.set(s.date, s);
+  }
+  return out;
+}
+
+/** weight の一覧 → 日付 → 体重(kg, 小数2桁) */
+export function weightByDate(points: BodyPoint[] | undefined): Map<string, BodySample> {
+  const samples: BodySample[] = [];
+  for (const p of points ?? []) {
+    const g = num(p.weight?.weightGrams);
+    const t = sampleDate(p.weight?.sampleTime);
+    if (g === null || !t) continue;
+    const kg = Math.round((g / 1000) * 100) / 100;
+    if (kg >= 30 && kg <= 300) samples.push({ ...t, value: kg });
+  }
+  return earliestByDate(samples);
+}
+
+/** body-fat の一覧 → 日付 → 体脂肪率(%, 小数1桁) */
+export function bodyFatByDate(points: BodyPoint[] | undefined): Map<string, BodySample> {
+  const samples: BodySample[] = [];
+  for (const p of points ?? []) {
+    const v = num(p.bodyFat?.percentage);
+    const t = sampleDate(p.bodyFat?.sampleTime);
+    if (v === null || !t) continue;
+    const pct = Math.round(v * 10) / 10;
+    if (pct >= 3 && pct <= 60) samples.push({ ...t, value: pct });
+  }
+  return earliestByDate(samples);
+}
