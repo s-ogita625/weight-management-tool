@@ -20,6 +20,8 @@ interface Props {
   ma7: number | null;
   /** 7日移動平均の1週間前との差 */
   ma7WeeklyDelta: number | null;
+  /** Fitbit の心拍・HRV・睡眠から推定した疲労度（1〜5） */
+  estimatedFatigue?: { value: number; label: string } | null;
 }
 
 export default function WeightQuickCard({
@@ -29,12 +31,13 @@ export default function WeightQuickCard({
   recentlyLogged,
   ma7,
   ma7WeeklyDelta,
+  estimatedFatigue = null,
 }: Props) {
   const router = useRouter();
   const [value, setValue] = useState(
     (todayWeight ?? lastWeight ?? 70).toFixed(1),
   );
-  const [copyCondition, setCopyCondition] = useState(!hasCondition && recentlyLogged);
+  const [copyCondition, setCopyCondition] = useState(!hasCondition && (recentlyLogged || estimatedFatigue !== null));
   const [editing, setEditing] = useState(todayWeight === null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -49,9 +52,10 @@ export default function WeightQuickCard({
     setError(null);
     startTransition(async () => {
       const weight = Number(value);
+      const fatigue = copyCondition ? (estimatedFatigue?.value ?? null) : null;
       const res = await sendOrQueue(
-        { kind: 'weight', weight, copyCondition, at: nowAt() },
-        () => quickSaveWeightAction(weight, copyCondition),
+        { kind: 'weight', weight, copyCondition, fatigue, at: nowAt() },
+        () => quickSaveWeightAction(weight, copyCondition, null, fatigue),
       );
       if (res.status === 'queued') {
         setEditing(false);
@@ -118,7 +122,9 @@ export default function WeightQuickCard({
                 onChange={(e) => setCopyCondition(e.target.checked)}
                 className="h-4 w-4 accent-[#a3ff12]"
               />
-              体調はいつも通り（前回の疲労・気分をコピー）
+              {estimatedFatigue
+                ? `疲労度は Fitbit の推定（${estimatedFatigue.label}）、気分は前回をコピー`
+                : '体調はいつも通り（前回の疲労・気分をコピー）'}
             </label>
           )}
           <button

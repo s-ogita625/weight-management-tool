@@ -10,28 +10,22 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import QuickMeals, { type MealSetView, type TodayMeal } from '@/components/home/QuickMeals';
-import WaterQuick from '@/components/home/WaterQuick';
 import WeightQuickCard from '@/components/home/WeightQuickCard';
 import WeightTrendMini, { type WeightPoint } from '@/components/home/WeightTrendMini';
-import WorkoutQuick, { type WorkoutTemplateView } from '@/components/home/WorkoutQuick';
 import type { QuickMealItem } from '@/app/actions/quick';
 import { getSessionUserId } from '@/lib/auth';
 import { GoalCheckCard, InsightList, WeeklyReportCard } from '@/components/home/InsightsPanel';
 import { calculate, PERIOD_WEEKS } from '@/lib/calculations';
 import ActivityCard, { type ActivityDay } from '@/components/health/ActivityCard';
+import RecoveryCard from '@/components/health/RecoveryCard';
 import { googleHealthConfigured } from '@/lib/google-health';
-import {
-  findRecentPRs,
-  buildBodyPartBalance,
-  buildExerciseHistories,
-} from '@/lib/workout-analysis';
+import { estimateRecovery, isTrainingExercise, type RecoveryDay } from '@/lib/fitness';
 import {
   goalCheck,
   plateauInsight,
   refeedRecoveryInsight,
   reminderInsight,
   weeklyReport,
-  workoutInsights,
   type DayCondition,
   type Insight,
   type MealDay,
@@ -42,8 +36,6 @@ import { sql } from '@/lib/db';
 import { pickFunComparisons } from '@/lib/fun-foods';
 import { inferMealType } from '@/lib/meal-time';
 import { addDays, daysBetween } from '@/lib/stats';
-import { buildSplitTemplates } from '@/lib/workout-templates';
-import { getWorkoutSessions, getWorkoutStats } from '@/lib/workouts';
 import type { DailyLog, MealType, Profile } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -64,7 +56,7 @@ export default async function Home() {
             体重管理ツール
           </h1>
           <p className="mt-3 text-sm leading-relaxed text-slate-300">
-            身体データと目標から、食事プラン、PFC、体重推移、筋トレ記録、AIコーチングまでまとめて管理します。
+            身体データと目標から、食事プラン、PFC、体重推移、Fitbit の運動・睡眠・回復度、AIコーチングまでまとめて管理します。
           </p>
         </div>
 
@@ -73,7 +65,7 @@ export default async function Home() {
           <FeatureTile icon={Utensils} label="ワンタップ食事記録" />
           <FeatureTile icon={TrendingUp} label="体重推移" />
           <FeatureTile icon={Bot} label="AIコーチ" />
-          <FeatureTile icon={Dumbbell} label="筋トレ記録" />
+          <FeatureTile icon={Dumbbell} label="Fitbit 連携" />
           <FeatureTile icon={Zap} label="リーンカット" />
         </div>
 
@@ -103,15 +95,13 @@ export default async function Home() {
     weightRowsRaw,
     todayLogRaw,
     mealRowsRaw,
-    hydrationRowsRaw,
     frequentRaw,
     setsRaw,
-    workoutStats,
-    workoutSessions,
     conditionsRaw,
     mealDaysRaw,
     healthConnRaw,
     wearableRaw,
+    recoveryRaw,
   ] = await Promise.all([
     sql`select * from profiles where user_id = ${userId} limit 1`,
     sql`
@@ -134,11 +124,6 @@ export default async function Home() {
       from meal_logs
       where user_id = ${userId} and date = ${today}
       order by time nulls last, created_at
-    `,
-    sql`
-      select coalesce(sum(amount_ml), 0)::int as total
-      from hydration_logs
-      where user_id = ${userId} and date = ${today}
     `,
     // よく食べるメニュー：回数 + 今の時間帯（朝食など）での回数を重み付けして並べる
     sql`
@@ -174,8 +159,6 @@ export default async function Home() {
       where user_id = ${userId}
       order by (meal_type = ${currentMealType}) desc nulls last, created_at
     `.catch(() => []), // マイグレーション未適用でもホームは表示する
-    getWorkoutStats(userId),
-    getWorkoutSessions(userId, 60),
     sql`
       select to_char(date, 'YYYY-MM-DD') as date, weight_kg::float as weight,
              sleep_hours::float as sleep_hours, mood, fatigue
@@ -202,6 +185,12 @@ export default async function Home() {
       from wearable_daily
       where user_id = ${userId} and date >= ${addDays(today, -7)}
       order by date
+    `.catch(() => []),
+    // 回復度（安静時心拍・HRV。マイグレーション 0014 適用前は空）
+    sql`
+      select to_char(date, 'YYYY-MM-DD') as date, resting_hr, hrv_ms::float as hrv_ms, sleep_minutes
+      from wearable_daily
+      where user_id = ${userId} and date >= ${addDays(today, -30)}
     `.catch(() => []),
   ]);
 
@@ -294,8 +283,19 @@ export default async function Home() {
     calcResult.recommendedFormula === 'katchMcArdle'
       ? calcResult.katchMcArdle
       : calcResult.mifflin;
-  // D2: トレ日は炭水化物を +25g（+100kcal）、休養日は -38g（-150kcal）
-  const isTrainingDay = workoutSessions.some((s) => s.date === today);
+  // ---------- Fitbit / Google Health ----------
+  const healthConn = (healthConnRaw as unknown as Array<{ stale: boolean }>)[0];
+  const healthConnected = Boolean(healthConn);
+  const healthStale = healthConnected && healthConn.stale;
+  const wearable = wearableRaw as unknown as ActivityDay[];
+  const activityToday = wearable.find((w) => w.date === today) ?? null;
+  const recovery = estimateRecovery(recoveryRaw as unknown as RecoveryDay[], today);
+  const trainingDates = wearable
+    .filter((w) => w.exercises.some((e) => isTrainingExercise(e)))
+    .map((w) => w.date);
+
+  // D2: トレ日（Fitbit で筋トレ等を記録した日）は炭水化物を +25g（+100kcal）、休養日は -38g（-150kcal）
+  const isTrainingDay = trainingDates.includes(today);
   const dayAdjustKcal = isTrainingDay ? 100 : -150;
   const plan = {
     ...basePlan,
@@ -325,28 +325,6 @@ export default async function Home() {
     Number(today.replaceAll('-', '')),
   )[0];
 
-  // ---------- 筋トレ ----------
-  const templates: WorkoutTemplateView[] = buildSplitTemplates(workoutSessions)
-    .slice(0, 4)
-    .map((t) => ({
-      key: t.key,
-      label: t.label,
-      sessionId: t.session.id,
-      date: t.session.date,
-      exerciseCount: t.session.exercises.length,
-      setCount: t.session.totalSets,
-      daysAgo: daysBetween(t.session.date, today),
-    }));
-  const todaySessions = buildSplitTemplates(
-    workoutSessions.filter((s) => s.date === today),
-  ).map((t) => ({ label: t.label, setCount: t.session.totalSets }));
-
-  // ---------- Fitbit / Google Health ----------
-  const healthConn = (healthConnRaw as unknown as Array<{ stale: boolean }>)[0];
-  const healthConnected = Boolean(healthConn);
-  const healthStale = healthConnected && healthConn.stale;
-  const wearable = wearableRaw as unknown as ActivityDay[];
-  const activityToday = wearable.find((w) => w.date === today) ?? null;
   const pastWearable = wearable.filter((w) => w.date < today && w.total_kcal);
   const pastIntake = pastWearable
     .map((w) => (mealDaysRaw as unknown as MealDay[]).find((m) => m.date === w.date && m.entries >= 2))
@@ -361,14 +339,10 @@ export default async function Home() {
   // ---------- 気づき・レポート ----------
   const conditions = (conditionsRaw as unknown as DayCondition[]).reverse();
   const mealDays = mealDaysRaw as unknown as MealDay[];
-  const histories = buildExerciseHistories(workoutSessions);
-  const balance = buildBodyPartBalance(workoutSessions, today);
-  const recentWorkout = workoutSessions.some((s) => s.date >= addDays(today, -14));
   const insights: Insight[] = [
     reminderInsight(timeInJST(), todayWeight !== null, meals.length),
     plateauInsight(weights, today, Number(profile.target_weight_kg), basePlan.targetCalories),
     refeedRecoveryInsight(weights, mealDays, today, basePlan.targetCalories, cheatDayPlan.freeDayDates),
-    ...workoutInsights(findRecentPRs(histories, addDays(today, -7)), balance, today, recentWorkout),
   ].filter((i): i is Insight => i !== null);
   const goal = goalCheck(
     weights,
@@ -380,16 +354,12 @@ export default async function Home() {
     weights,
     conditions,
     mealDays,
-    workoutSessions.map((s) => s.date),
+    trainingDates,
     today,
     basePlan.targetCalories,
     basePlan.protein_g,
   );
   const showReport = report.weightDays + report.mealDays + report.workouts > 0;
-
-  const hydrationTotal = Number(
-    (hydrationRowsRaw as unknown as Array<{ total: number }>)[0]?.total ?? 0,
-  );
 
   return (
     <div className="page-wide home-grid py-4">
@@ -438,7 +408,9 @@ export default async function Home() {
                 </div>
                 <ProgressBar value={mealTotal.calories} max={plan.targetCalories} />
                 <div className="mt-2 text-[10px] text-slate-500">
-                  {isTrainingDay ? '💪 トレ日：炭水化物 +25g（+100kcal）' : '🛌 休養日：炭水化物 -38g（-150kcal）。筋トレを記録するとトレ日の目標に切り替わります'}
+                  {isTrainingDay ? '💪 トレ日：炭水化物 +25g（+100kcal）' : healthConnected
+                    ? '🛌 休養日：炭水化物 -38g（-150kcal）。Fitbit で筋トレ等が記録されるとトレ日の目標に切り替わります'
+                    : '🛌 休養日：炭水化物 -38g（-150kcal）'}
                 </div>
                 <div className="mt-3 grid grid-cols-3 gap-2">
                   <Macro label="P" value={mealTotal.protein_g} target={plan.protein_g} color="#a3ff12" />
@@ -467,9 +439,11 @@ export default async function Home() {
             recentlyLogged={daysSinceLastLog !== null && daysSinceLastLog <= 7}
             ma7={latestPoint?.ma7 ?? null}
             ma7WeeklyDelta={ma7WeeklyDelta}
+            estimatedFatigue={recovery ? { value: recovery.fatigue, label: recovery.label } : null}
           />
         </div>
-        <div className="order-5 min-w-0 empty:hidden">
+        <div className="order-5 min-w-0 space-y-3 empty:hidden">
+          {healthConnected && <RecoveryCard recovery={recovery} today={today} compact />}
           <ActivityCard
             connected={healthConnected}
             configured={googleHealthConfigured()}
@@ -503,16 +477,6 @@ export default async function Home() {
             currentMealType={currentMealType}
             savableTypes={savableTypes}
             roughItems={roughItems}
-          />
-        </div>
-        <div className="order-8 min-w-0 empty:hidden">
-          <WaterQuick totalMl={hydrationTotal} />
-        </div>
-        <div className="order-9 min-w-0 empty:hidden">
-          <WorkoutQuick
-            templates={templates}
-            todaySessions={todaySessions}
-            sessionsThisWeek={workoutStats.sessionsThisWeek}
           />
         </div>
         <div className="order-12 min-w-0 empty:hidden">

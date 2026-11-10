@@ -24,10 +24,12 @@ interface Props {
     deep: number | null;
     rem: number | null;
   } | null;
+  /** Fitbit の心拍・HRV・睡眠から推定した疲労度。未入力ならこれを初期値にする */
+  estimatedFatigue?: { value: number; label: string; reasons: string[] } | null;
 }
 
 
-export default function DailyLogForm({ initial, previous, fitbitSleep }: Props) {
+export default function DailyLogForm({ initial, previous, fitbitSleep, estimatedFatigue }: Props) {
   const sleepFromFitbit = Boolean(fitbitSleep?.connected);
   const router = useRouter();
   const [state, formAction, pending] = useActionState(saveDailyLogAction, null);
@@ -52,7 +54,9 @@ export default function DailyLogForm({ initial, previous, fitbitSleep }: Props) 
   const [sleepQuality, setSleepQuality] = useState<number | null>(
     initial?.sleep_quality ?? null,
   );
-  const [fatigue, setFatigue] = useState<number | null>(initial?.fatigue ?? null);
+  const [fatigue, setFatigue] = useState<number | null>(
+    initial?.fatigue ?? estimatedFatigue?.value ?? null,
+  );
   const [mood, setMood] = useState<number | null>(initial?.mood ?? null);
   useEffect(() => {
     if (state && 'ok' in state && state.ok) {
@@ -123,12 +127,14 @@ export default function DailyLogForm({ initial, previous, fitbitSleep }: Props) 
               if (previous.sleep_hours !== null) setSleepHours(String(previous.sleep_hours));
               setSleepQuality(previous.sleep_quality ?? null);
             }
-            setFatigue(previous.fatigue ?? null);
+            setFatigue(estimatedFatigue?.value ?? previous.fatigue ?? null);
             setMood(previous.mood ?? null);
           }}
           className="w-full h-11 rounded-xl border border-[#a3ff12]/40 bg-[#a3ff12]/10 text-sm font-semibold text-[#a3ff12]"
         >
-          体調はいつも通り（{previous.date} の内容をコピー）
+          {estimatedFatigue
+            ? `気分は ${previous.date} と同じ（疲労度は Fitbit の推定）`
+            : `体調はいつも通り（${previous.date} の内容をコピー）`}
         </button>
       )}
 
@@ -172,6 +178,16 @@ export default function DailyLogForm({ initial, previous, fitbitSleep }: Props) 
         labels={QUALITY_LABELS}
       />
       </>
+      )}
+      {estimatedFatigue && (
+        <div className="rounded-xl border border-[#a3ff12]/30 bg-[#a3ff12]/10 px-4 py-3 text-sm">
+          <div className="font-semibold text-[#a3ff12]">
+            Fitbit の推定：{estimatedFatigue.label}（疲労度 {estimatedFatigue.value}）
+          </div>
+          <div className="mt-1 text-xs text-slate-300">
+            {estimatedFatigue.reasons.join(' / ')}。違うと感じたら下で選び直してください。
+          </div>
+        </div>
       )}
       <SegmentField
         label="疲労度"

@@ -4,7 +4,7 @@ import { Watch } from 'lucide-react';
 import HealthControls from '@/components/health/HealthControls';
 import { getSessionUserId } from '@/lib/auth';
 import { sql } from '@/lib/db';
-import { googleHealthConfigured } from '@/lib/google-health';
+import { googleHealthConfigured, hasHealthMetricsScope } from '@/lib/google-health';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,7 +30,8 @@ export default async function HealthSettingsPage({
       from health_connections where user_id = ${userId}
     `.catch(() => []),
     sql`
-      select to_char(date, 'YYYY-MM-DD') as date, steps, total_kcal::float as total_kcal, sleep_minutes
+      select to_char(date, 'YYYY-MM-DD') as date, steps, total_kcal::float as total_kcal, sleep_minutes,
+             resting_hr, hrv_ms::float as hrv_ms
       from wearable_daily where user_id = ${userId}
       order by date desc limit 7
     `.catch(() => []),
@@ -39,12 +40,15 @@ export default async function HealthSettingsPage({
     connected_at: string;
     last_synced_at: string | null;
     last_error: string | null;
+    scopes: string;
   }>)[0];
   const recent = recentRows as unknown as Array<{
     date: string;
     steps: number | null;
     total_kcal: number | null;
     sleep_minutes: number | null;
+    resting_hr: number | null;
+    hrv_ms: number | null;
   }>;
   const fmt = (iso: string | null) =>
     iso ? new Date(iso).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }) : '-';
@@ -57,8 +61,8 @@ export default async function HealthSettingsPage({
           <Watch size={22} className="text-[#a3ff12]" /> Fitbit / Google Health 連携
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-slate-300">
-          Fitbit Air などで計測した歩数・消費カロリー・睡眠・運動を、Google Health API から毎朝7時に自動で取り込みます。
-          連携中は睡眠の入力欄がなくなり、睡眠時間は Fitbit の値で自動記録されます。
+          Fitbit Air などで計測した歩数・消費カロリー・睡眠・運動・安静時心拍・HRV を、Google Health API から毎朝7時に自動で取り込みます。
+          連携中は睡眠の入力欄がなくなり、運動は Fitbit の記録を表示し、疲労度は心拍・HRV・睡眠から推定します。
         </p>
       </div>
 
@@ -92,12 +96,27 @@ export default async function HealthSettingsPage({
             {conn.last_error && (
               <p className="rounded bg-rose-500/10 p-2 text-[11px] text-rose-200">直近のエラー: {conn.last_error}</p>
             )}
+            {!hasHealthMetricsScope(conn.scopes) && (
+              <div className="space-y-2 rounded-lg border border-amber-300/35 bg-amber-400/10 p-3 text-xs text-amber-100">
+                <p>
+                  疲労度（回復度）の推定に使う「安静時心拍・HRV」の読み取り権限がまだありません。
+                  もう一度連携すると追加されます（記録済みのデータはそのまま）。
+                </p>
+                <Link
+                  href="/api/google-health/connect"
+                  prefetch={false}
+                  className="sport-button-primary flex h-10 items-center justify-center text-sm"
+                >
+                  心拍・HRV の権限を追加して再連携
+                </Link>
+              </div>
+            )}
             <HealthControls />
           </>
         ) : (
           <>
             <p className="text-sm text-slate-300">
-              Fitbit Air をつないでいる Google アカウントでログインして、歩数・消費カロリー・睡眠・運動の読み取りを許可してください（読み取りのみ）。
+              Fitbit Air をつないでいる Google アカウントでログインして、歩数・消費カロリー・睡眠・運動・心拍の読み取りを許可してください（読み取りのみ）。
             </p>
             <Link
               href="/api/google-health/connect"
@@ -120,6 +139,8 @@ export default async function HealthSettingsPage({
                 <th className="text-right font-semibold">歩数</th>
                 <th className="text-right font-semibold">消費kcal</th>
                 <th className="text-right font-semibold">睡眠</th>
+                <th className="text-right font-semibold">安静時心拍</th>
+                <th className="text-right font-semibold">HRV</th>
               </tr>
             </thead>
             <tbody>
@@ -131,6 +152,8 @@ export default async function HealthSettingsPage({
                   <td className="py-1.5 text-right">
                     {r.sleep_minutes ? `${Math.floor(r.sleep_minutes / 60)}h${String(r.sleep_minutes % 60).padStart(2, '0')}` : '-'}
                   </td>
+                  <td className="py-1.5 text-right">{r.resting_hr ?? '-'}</td>
+                  <td className="py-1.5 text-right">{r.hrv_ms ? `${Math.round(r.hrv_ms)}ms` : '-'}</td>
                 </tr>
               ))}
             </tbody>

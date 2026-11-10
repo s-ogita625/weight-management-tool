@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation';
 import DailyLogForm from '@/components/forms/DailyLogForm';
 import { getSessionUserId } from '@/lib/auth';
 import { dateInJST } from '@/lib/date';
+import { estimateRecovery, type RecoveryDay } from '@/lib/fitness';
+import { addDays } from '@/lib/stats';
 import { sql } from '@/lib/db';
 import type { DailyLog } from '@/lib/types';
 
@@ -37,13 +39,19 @@ export default async function MorningPage() {
   const previous = prevRows[0] ?? null;
 
   // Fitbit 連携中なら睡眠は自動取得（入力欄を出さない）
-  const [connRows, sleepRows] = await Promise.all([
+  const [connRows, sleepRows, recoveryRows] = await Promise.all([
     sql`select 1 from health_connections where user_id = ${userId}`.catch(() => []),
     sql`
       select sleep_minutes, deep_minutes, rem_minutes from wearable_daily
       where user_id = ${userId} and date = ${today}
     `.catch(() => []),
+    sql`
+      select to_char(date, 'YYYY-MM-DD') as date, resting_hr, hrv_ms::float as hrv_ms, sleep_minutes
+      from wearable_daily
+      where user_id = ${userId} and date >= ${addDays(today, -30)}
+    `.catch(() => []),
   ]);
+  const recovery = estimateRecovery(recoveryRows as unknown as RecoveryDay[], today);
   const s = (sleepRows as unknown as Array<{ sleep_minutes: number | null; deep_minutes: number | null; rem_minutes: number | null }>)[0];
   const fitbitSleep = {
     connected: (connRows as unknown[]).length > 0,
@@ -59,7 +67,14 @@ export default async function MorningPage() {
         体重だけでもOK。体調がいつも通りなら下のボタンで前回の内容をコピーできます。
         {initial ? ' （本日分は更新します）' : ''}
       </p>
-      <DailyLogForm initial={initial} previous={previous} fitbitSleep={fitbitSleep} />
+      <DailyLogForm
+        initial={initial}
+        previous={previous}
+        fitbitSleep={fitbitSleep}
+        estimatedFatigue={
+          recovery ? { value: recovery.fatigue, label: recovery.label, reasons: recovery.reasons } : null
+        }
+      />
     </div>
   );
 }

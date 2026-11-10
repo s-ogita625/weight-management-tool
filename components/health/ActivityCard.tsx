@@ -10,7 +10,7 @@ export interface ActivityDay {
   sleep_minutes: number | null;
   deep_minutes: number | null;
   rem_minutes: number | null;
-  exercises: Array<{ name: string; minutes: number | null; kcal: number | null }>;
+  exercises: Array<{ name: string; type: string; minutes: number | null; kcal: number | null }>;
 }
 
 interface Props {

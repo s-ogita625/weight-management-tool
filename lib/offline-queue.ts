@@ -2,12 +2,11 @@
 
 /**
  * オフライン時の記録キュー（端末の localStorage に一時保存し、オンライン復帰時に送信）。
- * 対象はホームのワンタップ記録（体重・食事・水分）のみ。
+ * 対象はホームのワンタップ記録（体重・食事）のみ。
  */
 
 import {
   quickAddMealAction,
-  quickAddWaterAction,
   quickSaveWeightAction,
   type QuickMealItem,
   type RecordedAt,
@@ -16,7 +15,8 @@ import { dateInJST, timeInJST } from '@/lib/date';
 
 export type OfflineJob =
   | { kind: 'meal'; item: QuickMealItem; at: RecordedAt }
-  | { kind: 'weight'; weight: number; copyCondition: boolean; at: RecordedAt }
+  | { kind: 'weight'; weight: number; copyCondition: boolean; fatigue?: number | null; at: RecordedAt }
+  // 水分記録は廃止。古い端末に残っているキューは送らずに捨てる
   | { kind: 'water'; ml: number; at: RecordedAt };
 
 const KEY = 'wmt-offline-queue-v1';
@@ -89,8 +89,13 @@ export async function flushQueue(): Promise<number> {
       const job = jobs[0];
       try {
         if (job.kind === 'meal') await quickAddMealAction(job.item, job.at);
-        else if (job.kind === 'weight') await quickSaveWeightAction(job.weight, job.copyCondition, job.at);
-        else await quickAddWaterAction(job.ml, job.at);
+        else if (job.kind === 'weight') {
+          await quickSaveWeightAction(job.weight, job.copyCondition, job.at, job.fatigue ?? null);
+        } else {
+          jobs = readQueue().slice(1);
+          writeQueue(jobs);
+          continue;
+        }
         sent++;
       } catch (err) {
         if (isNetworkError(err)) break; // まだ通信できない
