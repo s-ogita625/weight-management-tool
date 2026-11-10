@@ -10,7 +10,8 @@ Fitbit Air のデータは Google Health アプリ経由でクラウドに同期
 | 歩数・距離・アクティブゾーン分 | ホームの Fitbit カード |
 | 消費カロリー（total-calories） | 今日の収支、直近7日の「平均消費 vs 平均摂取」 |
 | 睡眠（合計・深い/レム/浅い・覚醒） | 朝の記録の睡眠時間を自動記録（連携中は入力欄なし）→ 睡眠と体重の分析に使われる |
-| 運動（ウォーキング等） | ホームの Fitbit カードに表示 |
+| 運動（筋トレ・ウォーキング等） | 「運動」タブに表示。筋トレ等をした日はトレ日の目標カロリーに切り替え |
+| 安静時心拍・HRV | 自分の30日平均と比べ、睡眠と合わせて「回復度（疲労度）」を推定 |
 
 同期は毎朝7時（Vercel Cron）と、ホームを開いたとき（前回から3時間以上たっていれば裏で実行）。読み取り専用で、Google 側のデータは変更しません。
 
@@ -20,7 +21,7 @@ Fitbit Air のデータは Google Health アプリ経由でクラウドに同期
 - プロジェクト: `weight-management-tool`（課金アカウントなし）
 - Google Health API: 有効
 - 同意画面: 外部 / 本番環境（未審査・100ユーザーまで）/ ホームページ・プライバシーポリシー（/privacy）・利用規約（/terms）
-- スコープ: activity_and_fitness.readonly, sleep.readonly
+- スコープ: activity_and_fitness.readonly, sleep.readonly, health_metrics_and_measurements.readonly
 - OAuth クライアント: ウェブ アプリケーション「weight-management-tool web」
   - リダイレクト URI: `https://weight-management-tool.vercel.app/api/google-health/callback`, `http://localhost:3000/api/google-health/callback`
 - Vercel（Production）: `GOOGLE_HEALTH_CLIENT_ID` 設定済み / `GOOGLE_HEALTH_CLIENT_SECRET` は本人が設定
@@ -37,6 +38,7 @@ Fitbit Air のデータは Google Health アプリ経由でクラウドに同期
 5. 「データアクセス」→「スコープを追加」で次の2つを追加
    - `https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly`
    - `https://www.googleapis.com/auth/googlehealth.sleep.readonly`
+   - `https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly`（安静時心拍・HRV）
 6. 「クライアント」→「クライアントを作成」→ 種類 **ウェブ アプリケーション**
    - 承認済みのリダイレクト URI に次を追加
      - `https://<本番のドメイン>/api/google-health/callback`
@@ -55,7 +57,7 @@ npx vercel env add GOOGLE_HEALTH_CLIENT_SECRET production
 
 ## DB
 
-`db/migrations/0013_google_health.sql`（`health_connections` と `wearable_daily`）を適用する。
+`db/migrations/0013_google_health.sql`（`health_connections` と `wearable_daily`）と `0014_wearable_recovery.sql`（安静時心拍・HRV の列）を適用する。
 トークンは `SESSION_SECRET` から作った鍵で AES-256-GCM 暗号化して保存する。
 
 ## 使い方
@@ -66,4 +68,5 @@ npx vercel env add GOOGLE_HEALTH_CLIENT_SECRET production
 ## 注意
 
 - Google Health API の `googlehealth.*` スコープは「制限付き」扱い。100 ユーザーを超えて配布するには Google のセキュリティ審査が必要（個人利用なら不要）。
-- 心拍・HRV・SpO2 なども API にあるが、今回は取り込んでいない（必要なら `health_metrics_and_measurements.readonly` スコープを追加）。
+- Fitbit アプリの「コンディションスコア」そのものは API にないため、安静時心拍・HRV・睡眠から近い考え方で推定している。
+- 心拍・HRV の権限は後から追加したので、それ以前に連携した場合は設定画面の「再連携」で権限を追加する。

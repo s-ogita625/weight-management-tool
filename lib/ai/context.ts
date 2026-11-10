@@ -4,7 +4,7 @@ import { sql } from '@/lib/db';
 import { calculate } from '@/lib/calculations';
 import { buildCheatDayPlan, type CheatDayPlan } from '@/lib/cheat-day';
 import { dateInJST } from '@/lib/date';
-import { getWorkoutSessions, getWorkoutStats } from '@/lib/workouts';
+import { estimateRecovery, isStrength, isTrainingExercise, isWalk, type ExerciseLike } from '@/lib/fitness';
 import {
   correlation,
   daysBetween,
@@ -20,16 +20,10 @@ import {
   PERIOD_LABELS,
   QUALITY_LABELS,
   TRAINING_FREQ_LABELS,
-  BODY_PART_LABELS,
-  HYDRATION_DRINK_LABELS,
   type DailyLog,
   type HistoricalAnalysis,
-  type HydrationDrinkType,
-  type HydrationLog,
   type MealLog,
   type Profile,
-  type WorkoutSessionDetail,
-  type WorkoutStats,
 } from '@/lib/types';
 
 export interface UserContext {
@@ -51,14 +45,8 @@ export interface UserContext {
   weightTrend: WeightTrend | null;
   /** 過去14-30日の深掘り分析 */
   historicalAnalysis: HistoricalAnalysis | null;
-  /** 直近30件の筋トレ記録 */
-  workoutSessions: WorkoutSessionDetail[];
-  /** 筋トレ集計 */
-  workoutStats: WorkoutStats;
-  /** 過去14日の水分補給ログ */
-  hydrationLogs: HydrationLog[];
-  /** 水分補給集計 */
-  hydrationStats: HydrationStats;
+  /** Fitbit（Google Health）の日別データ（新しい順） */
+  wearable: WearableContextDay[];
   /** 年4回フリーデイ計画 */
   cheatDayPlan: CheatDayPlan | null;
 }
@@ -106,18 +94,14 @@ export interface ContextStats {
   dailyLogsCount: number;
 }
 
-export interface HydrationStats {
-  daysLogged: number;
-  totalMl: number;
-  avgDailyMl: number;
-  avgWaterMl: number;
-  avgProteinMl: number;
-  avgCoffeeMl: number;
-  avgOtherMl: number;
-  todayMl: number;
-  todayWaterMl: number;
-  todayCoffeeMl: number;
-  drinkTypeTotals: Record<HydrationDrinkType, number>;
+export interface WearableContextDay {
+  date: string;
+  steps: number | null;
+  total_kcal: number | null;
+  sleep_minutes: number | null;
+  resting_hr: number | null;
+  hrv_ms: number | null;
+  exercises: ExerciseLike[];
 }
 
 /**
@@ -133,10 +117,8 @@ export async function buildUserContext(
   const [
     profileRowsRaw,
     mealLogsRaw,
-    hydrationLogsRaw,
     dailyLogsRaw,
-    workoutSessions,
-    workoutStats,
+    wearableRaw,
   ] = await Promise.all([
     sql`select * from profiles where user_id = ${userId} limit 1`,
     sql`
@@ -151,15 +133,6 @@ export async function buildUserContext(
     `,
     sql`
       select id, user_id, to_char(date, 'YYYY-MM-DD') as date,
-             to_char(time, 'HH24:MI') as time,
-             drink_type, amount_ml, memo, created_at
-      from hydration_logs
-      where user_id = ${userId}
-        and date >= current_date - (${daysBack}::int) * interval '1 day'
-      order by date desc, time desc nulls last, created_at desc
-    `,
-    sql`
-      select id, user_id, to_char(date, 'YYYY-MM-DD') as date,
              weight_kg, body_fat_pct,
              sleep_hours, sleep_quality, fatigue, mood, bowel,
              memo, custom_fields, created_at, updated_at
@@ -168,14 +141,19 @@ export async function buildUserContext(
         and date >= current_date - (${daysBack}::int) * interval '1 day'
       order by date asc
     `,
-    getWorkoutSessions(userId, 30),
-    getWorkoutStats(userId),
+    sql`
+      select to_char(date, 'YYYY-MM-DD') as date, steps, total_kcal::float as total_kcal,
+             sleep_minutes, resting_hr, hrv_ms::float as hrv_ms, exercises
+      from wearable_daily
+      where user_id = ${userId} and date >= current_date - 30
+      order by date desc
+    `.catch(() => []),
   ]);
 
   const profileRows = profileRowsRaw as unknown as Profile[];
   const profile = profileRows[0] ?? null;
   const logs = mealLogsRaw as unknown as MealLog[];
-  const hydrationLogs = hydrationLogsRaw as unknown as HydrationLog[];
+  const wearable = wearableRaw as unknown as WearableContextDay[];
   const dailyLogs = dailyLogsRaw as unknown as DailyLog[];
 
   let target: UserContext['target'] = null;
@@ -234,7 +212,6 @@ export async function buildUserContext(
 
   // 統計
   const stats = computeStats(dailyTotals, target, logs, dailyLogs);
-  const hydrationStats = computeHydrationStats(hydrationLogs);
 
   return {
     profile,
@@ -250,53 +227,8 @@ export async function buildUserContext(
       target,
       daysBack,
     ),
-    workoutSessions,
-    workoutStats,
-    hydrationLogs,
-    hydrationStats,
+    wearable,
     cheatDayPlan,
-  };
-}
-
-function computeHydrationStats(logs: HydrationLog[]): HydrationStats {
-  const byDate = new Map<string, number>();
-  const drinkTypeTotals: Record<HydrationDrinkType, number> = {
-    water: 0,
-    protein: 0,
-    coffee: 0,
-    other: 0,
-  };
-  for (const log of logs) {
-    const amount = Number(log.amount_ml);
-    byDate.set(log.date, (byDate.get(log.date) ?? 0) + amount);
-    drinkTypeTotals[log.drink_type] += amount;
-  }
-  const daysLogged = byDate.size;
-  const totalMl = logs.reduce((sum, log) => sum + Number(log.amount_ml), 0);
-  const today = dateInJST();
-  const todayLogs = logs.filter((log) => log.date === today);
-  const todayMl = todayLogs.reduce((sum, log) => sum + Number(log.amount_ml), 0);
-  const todayWaterMl = todayLogs
-    .filter((log) => log.drink_type === 'water')
-    .reduce((sum, log) => sum + Number(log.amount_ml), 0);
-  const todayCoffeeMl = todayLogs
-    .filter((log) => log.drink_type === 'coffee')
-    .reduce((sum, log) => sum + Number(log.amount_ml), 0);
-  const avg = (amount: number) =>
-    daysLogged === 0 ? 0 : Math.round(amount / daysLogged);
-
-  return {
-    daysLogged,
-    totalMl,
-    avgDailyMl: avg(totalMl),
-    avgWaterMl: avg(drinkTypeTotals.water),
-    avgProteinMl: avg(drinkTypeTotals.protein),
-    avgCoffeeMl: avg(drinkTypeTotals.coffee),
-    avgOtherMl: avg(drinkTypeTotals.other),
-    todayMl,
-    todayWaterMl,
-    todayCoffeeMl,
-    drinkTypeTotals,
   };
 }
 
@@ -605,26 +537,6 @@ export function formatContextForAI(ctx: UserContext): string {
     );
   }
 
-  if (ctx.hydrationStats.daysLogged > 0) {
-    const hs = ctx.hydrationStats;
-    parts.push(
-      `【水分補給(過去14日)】記録日数 ${hs.daysLogged}日 / 1日平均 ${hs.avgDailyMl}ml / 水 ${hs.avgWaterMl}ml / プロテイン飲料 ${hs.avgProteinMl}ml / コーヒー ${hs.avgCoffeeMl}ml / その他 ${hs.avgOtherMl}ml / 今日 ${hs.todayMl}ml（水${hs.todayWaterMl}ml・コーヒー${hs.todayCoffeeMl}ml）`,
-    );
-
-    parts.push(
-      `【直近の水分記録(最大8件)】\n${ctx.hydrationLogs
-        .slice(0, 8)
-        .map((log) => {
-          const tm = log.time ? ` ${log.time}` : '';
-          const memo = log.memo ? ` / ${log.memo}` : '';
-          return `- ${log.date}${tm}: ${HYDRATION_DRINK_LABELS[log.drink_type]} ${log.amount_ml}ml${memo}`;
-        })
-        .join('\n')}`,
-    );
-  } else {
-    parts.push('【水分補給】まだ水分補給の記録なし');
-  }
-
   // 深掘り分析
   if (ctx.historicalAnalysis) {
     const ha = ctx.historicalAnalysis;
@@ -641,52 +553,37 @@ export function formatContextForAI(ctx: UserContext): string {
     );
   }
 
-  if (ctx.workoutSessions.length > 0) {
-    const ws = ctx.workoutStats;
-    parts.push(
-      `【筋トレ記録】直近記録 ${ctx.workoutSessions.length}回 / 今週 ${ws.sessionsThisWeek}回・${ws.setsThisWeek}set・総ボリューム${ws.volumeThisWeekKg}kg / 今月 ${ws.sessionsThisMonth}回・${ws.setsThisMonth}set・総ボリューム${ws.volumeThisMonthKg}kg / 最終筋トレ: ${ws.lastWorkoutDate ?? '-'} / 休息日数: ${ws.restDays === null ? '-' : ws.restDays + '日'}`,
+  if (ctx.wearable.length > 0) {
+    const w = ctx.wearable;
+    const today = dateInJST();
+    const last14 = w.filter((d) => daysBetween(d.date, today) <= 14);
+    const avg = (xs: number[]) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : null);
+    const steps = avg(last14.map((d) => d.steps).filter((v): v is number => v !== null));
+    const burned = avg(last14.filter((d) => d.date < today).map((d) => d.total_kcal).filter((v): v is number => v !== null));
+    const sleep = avg(last14.map((d) => d.sleep_minutes).filter((v): v is number => v !== null));
+    const recovery = estimateRecovery(
+      w.map((d) => ({ date: d.date, resting_hr: d.resting_hr, hrv_ms: d.hrv_ms, sleep_minutes: d.sleep_minutes })),
+      today,
     );
-
-    if (ws.bodyPartSets.length > 0) {
-      parts.push(
-        `【部位別セット数(今月)】\n${ws.bodyPartSets
-          .map(
-            (p) =>
-              `- ${BODY_PART_LABELS[p.body_part]}: ${p.sets}set / ${p.volumeKg}kg`,
-          )
-          .join('\n')}`,
-      );
-    }
-
     parts.push(
-      `【直近の筋トレ内容(最大5回)】\n${ctx.workoutSessions
-        .slice(0, 5)
-        .map((session) => {
-          const exercises = session.exercises
-            .slice(0, 5)
-            .map((exercise) => {
-              const best = exercise.sets.reduce(
-                (acc, set) => {
-                  const weight = Number(set.weight_kg ?? 0);
-                  const reps = Number(set.reps ?? 0);
-                  const volume = weight * reps;
-                  return volume > acc.volume
-                    ? { weight, reps, volume }
-                    : acc;
-                },
-                { weight: 0, reps: 0, volume: 0 },
-              );
-              return `${exercise.name}(${exercise.sets.length}set 最大${best.weight.toFixed(1)}kg x ${best.reps}回)`;
-            })
-            .join(' / ');
-          return `- ${session.date}: ${session.totalSets}set / ${Math.round(
-            session.totalVolumeKg,
-          )}kg / ${exercises}`;
-        })
-        .join('\n')}`,
+      `【Fitbit(過去14日)】平均歩数 ${steps ?? '-'} / 平均消費 ${burned ?? '-'}kcal/日 / 平均睡眠 ${sleep !== null ? (sleep / 60).toFixed(1) + 'h' : '-'}` +
+        (recovery ? ` / 今日の回復度: ${recovery.label}（${recovery.reasons.join('、')}）` : ''),
+    );
+    const training = last14
+      .flatMap((d) => d.exercises.filter((e) => !isWalk(e)).map((e) => ({ date: d.date, e })))
+      .slice(0, 12);
+    const strengthDays = new Set(last14.filter((d) => d.exercises.some(isStrength)).map((d) => d.date)).size;
+    const trainingDays = new Set(last14.filter((d) => d.exercises.some(isTrainingExercise)).map((d) => d.date)).size;
+    parts.push(
+      `【運動(Fitbit・過去14日)】筋トレした日 ${strengthDays}日 / トレ日 ${trainingDays}日` +
+        (training.length > 0
+          ? `\n${training
+              .map(({ date, e }) => `- ${date}: ${e.name}${e.minutes ? ` ${e.minutes}分` : ''}${e.kcal ? ` ${Math.round(e.kcal)}kcal` : ''}${e.avg_hr ? ` 平均心拍${e.avg_hr}` : ''}`)
+              .join('\n')}`
+          : '（ウォーキング以外の運動なし）'),
     );
   } else {
-    parts.push('【筋トレ記録】まだ筋トレ記録なし');
+    parts.push('【Fitbit】未連携（運動・睡眠・心拍のデータなし）');
   }
 
   const s = ctx.stats;
@@ -765,9 +662,9 @@ export function buildSystemPrompt(ctx: UserContext): string {
 
 【あなたの役割】
 - ユーザーの食事記録・身体データ・体重トレンド・コンディション(睡眠/疲労/気分/便通)を総合的に解釈し、エビデンスに基づくアドバイスを行う
-- 水分補給（水・プロテイン飲料・コーヒー等）を、体重の日内/日次変動、むくみ、便通、疲労感、トレーニング出力の解釈材料として扱う
+- Fitbit の消費カロリー・歩数・睡眠・安静時心拍・HRV（回復度）を、摂取とのバランスや疲労・トレーニング量の判断材料として扱う
 - 体重トレンド（線形回帰の予測値・週次変化）が目標に対して妥当かを評価し、必要なら摂取量や運動量の調整を具体的に提案する
-- 筋トレ記録（種目・重量・回数・セット・部位別ボリューム）から筋量維持に十分な刺激が入っているかを評価する
+- Fitbit の運動記録（筋トレの頻度・時間・心拍）から筋量維持に十分な刺激が入っているかを評価する（種目・重量の記録はない）
 - 減量中は重量維持・総セット数・疲労管理を重視し、筋肉を落とさないための現実的な調整を提案する
 - 食事タイミング（meal_type/time）から leucine threshold 達成度や運動前後の最適化を評価
 - 睡眠不足や慢性疲労、便通異常などのコンディション悪化が見られた場合は、それらが目標達成に与える影響を栄養・トレーニングの観点で言及する

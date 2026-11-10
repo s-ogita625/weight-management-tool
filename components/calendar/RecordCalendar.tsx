@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { isStrength, isWalk, type ExerciseLike } from '@/lib/fitness';
 
 export interface CalendarDaySummary {
   date: string;
@@ -9,12 +10,8 @@ export interface CalendarDaySummary {
   fat_g: number;
   carbs_g: number;
   meal_count: number;
-  hydration_ml: number;
-  water_ml: number;
-  protein_ml: number;
-  coffee_ml: number;
-  other_ml: number;
-  hydration_count: number;
+  steps: number | null;
+  exercises: ExerciseLike[];
   weight_kg: number | null;
   body_fat_pct: number | null;
   sleep_hours: number | null;
@@ -131,10 +128,8 @@ export default function RecordCalendar({ days }: Props) {
                         {Number(summary.weight_kg).toFixed(1)}kg
                       </div>
                     )}
-                    {summary.hydration_ml > 0 && (
-                      <div className="truncate text-[10px] text-[#7af7ff]">
-                        {(Number(summary.hydration_ml) / 1000).toFixed(1)}L
-                      </div>
+                    {summary.exercises.some(isStrength) && (
+                      <div className="truncate text-[10px] text-[#7af7ff]">💪筋トレ</div>
                     )}
                     {summary.body_fat_pct !== null && (
                       <div className="truncate text-[10px] text-slate-300">
@@ -161,16 +156,21 @@ export default function RecordCalendar({ days }: Props) {
             <Metric label="P" value={`${Math.round(Number(selectedSummary.protein_g))}g`} />
             <Metric label="F/C" value={`${Math.round(Number(selectedSummary.fat_g))}g / ${Math.round(Number(selectedSummary.carbs_g))}g`} />
             <Metric
-              label="水分補給"
-              value={
-                selectedSummary.hydration_ml > 0
-                  ? `${(Number(selectedSummary.hydration_ml) / 1000).toFixed(1)}L (${selectedSummary.hydration_count}件)`
-                  : '未記録'
-              }
+              label="歩数"
+              value={selectedSummary.steps !== null ? `${Number(selectedSummary.steps).toLocaleString()}歩` : '-'}
             />
             <Metric
-              label="水/プロテイン/コーヒー"
-              value={`${selectedSummary.water_ml}ml / ${selectedSummary.protein_ml}ml / ${selectedSummary.coffee_ml}ml`}
+              label="運動（Fitbit）"
+              value={
+                selectedSummary.exercises.filter((e) => !isWalk(e)).length > 0
+                  ? selectedSummary.exercises
+                      .filter((e) => !isWalk(e))
+                      .map((e) => `${e.name}${e.minutes ? ` ${e.minutes}分` : ''}`)
+                      .join('、')
+                  : selectedSummary.exercises.length > 0
+                    ? `ウォーキング ${selectedSummary.exercises.length}回`
+                    : 'なし'
+              }
             />
             <Metric
               label="体重/体脂肪"

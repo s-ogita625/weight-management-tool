@@ -185,8 +185,15 @@ export async function quickSaveWeightAction(
   weightKg: number,
   copyCondition: boolean,
   at?: RecordedAt | null,
+  /** Fitbit から推定した疲労度（1〜5）。あれば前回の値の代わりに使う */
+  estimatedFatigue?: number | null,
 ): Promise<{ ok: true } | { error: string }> {
   const userId = await requireUser();
+  const fatigueEst =
+    estimatedFatigue !== null && estimatedFatigue !== undefined &&
+    Number.isInteger(estimatedFatigue) && estimatedFatigue >= 1 && estimatedFatigue <= 5
+      ? estimatedFatigue
+      : null;
   const weight = Math.round(Number(weightKg) * 100) / 100;
   if (!Number.isFinite(weight) || weight < 30 || weight > 300) {
     return { error: '体重は30〜300kgで入力してください' };
@@ -199,6 +206,12 @@ export async function quickSaveWeightAction(
     on conflict (user_id, date) do update set weight_kg = excluded.weight_kg
   `;
 
+  if (copyCondition && fatigueEst !== null) {
+    await sql`
+      update daily_logs set fatigue = coalesce(fatigue, ${fatigueEst})
+      where user_id = ${userId} and date = ${today}
+    `;
+  }
   if (copyCondition) {
     await sql`
       update daily_logs d set
@@ -226,85 +239,5 @@ export async function quickSaveWeightAction(
   revalidatePath('/trend');
   revalidatePath('/calendar');
   revalidatePath('/plan');
-  return { ok: true };
-}
-
-/** 水を追加（100ml 単位） */
-export async function quickAddWaterAction(
-  amountMl: number,
-  at?: RecordedAt | null,
-): Promise<{ ok: true } | { error: string }> {
-  const userId = await requireUser();
-  const amount = Math.round(Number(amountMl));
-  if (!Number.isInteger(amount) || amount < 100 || amount > 3000 || amount % 100 !== 0) {
-    return { error: '水分量は100ml単位で入力してください' };
-  }
-  await sql`
-    insert into hydration_logs (user_id, date, time, drink_type, amount_ml)
-    values (${userId}, ${resolveAt(at).date}, ${resolveAt(at).time}, 'water', ${amount})
-  `;
-  revalidatePath('/');
-  return { ok: true };
-}
-
-/** 過去のセッションを、内容そのまま今日の記録として複製する */
-export async function repeatWorkoutAction(
-  sessionId: string,
-): Promise<{ ok: true } | { error: string }> {
-  const userId = await requireUser();
-  const src = (await sql`
-    select id, duration_min, main_body_part, perceived_effort, to_char(date, 'YYYY-MM-DD') as date
-    from workout_sessions where id = ${sessionId} and user_id = ${userId}
-  `) as unknown as Array<{
-    id: string;
-    duration_min: number | null;
-    main_body_part: string | null;
-    perceived_effort: number | null;
-    date: string;
-  }>;
-  if (src.length === 0) return { error: '元の記録が見つかりません' };
-  const s = src[0];
-
-  const created = (await sql`
-    insert into workout_sessions (
-      user_id, date, start_time, duration_min, main_body_part, perceived_effort, memo
-    ) values (
-      ${userId}, ${dateInJST()}, ${timeInJST()}, ${s.duration_min}, ${s.main_body_part},
-      ${s.perceived_effort}, ${`${s.date}の内容をそのまま記録`}
-    )
-    returning id
-  `) as unknown as Array<{ id: string }>;
-  const newId = created[0].id;
-
-  const exercises = (await sql`
-    select id, exercise_order, name, body_part, memo
-    from workout_exercises where session_id = ${s.id}
-    order by exercise_order
-  `) as unknown as Array<{
-    id: string;
-    exercise_order: number;
-    name: string;
-    body_part: string;
-    memo: string | null;
-  }>;
-
-  for (const ex of exercises) {
-    const exRows = (await sql`
-      insert into workout_exercises (session_id, exercise_order, name, body_part, memo)
-      values (${newId}, ${ex.exercise_order}, ${ex.name}, ${ex.body_part}, ${ex.memo})
-      returning id
-    `) as unknown as Array<{ id: string }>;
-    await sql`
-      insert into workout_sets (
-        exercise_id, set_order, weight_kg, reps, rpe, rir, set_type, side, memo
-      )
-      select ${exRows[0].id}, set_order, weight_kg, reps, rpe, rir, set_type, side, memo
-      from workout_sets where exercise_id = ${ex.id}
-    `;
-  }
-
-  revalidatePath('/');
-  revalidatePath('/workout');
-  revalidatePath('/calendar');
   return { ok: true };
 }

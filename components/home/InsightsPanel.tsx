@@ -111,7 +111,7 @@ export function WeeklyReportCard({ report }: { report: WeeklyReport }) {
         />
         <Stat label="体重記録" value={`${report.weightDays}/7日`} />
         <Stat label="食事記録" value={`${report.mealDays}/7日`} />
-        <Stat label="筋トレ" value={`${report.workouts}回`} />
+        <Stat label="トレ日" value={`${report.workouts}日`} />
       </div>
       {report.highlights.length > 0 && (
         <ul className="mt-3 space-y-1 text-xs text-slate-300">

@@ -33,6 +33,8 @@ export interface WearableExercise {
   minutes: number | null;
   kcal: number | null;
   steps: number | null;
+  avg_hr?: number | null;
+  azm?: number | null;
 }
 
 export function toCivilDate(iso: string): CivilDate {
@@ -159,7 +161,12 @@ interface ExercisePoint {
     exerciseType?: string;
     displayName?: string;
     activeDuration?: string;
-    metricsSummary?: { caloriesKcal?: number | string; steps?: number | string };
+    metricsSummary?: {
+      caloriesKcal?: number | string;
+      steps?: number | string;
+      averageHeartRateBeatsPerMinute?: number | string;
+      activeZoneMinutes?: number | string;
+    };
   };
 }
 
@@ -175,7 +182,8 @@ export function exercisesByDate(points: ExercisePoint[] | undefined): Map<string
   for (const point of points ?? []) {
     const e = point.exercise;
     if (!e) continue;
-    const date = civilToIso(e.interval?.civilStartTime) ?? e.interval?.startTime?.slice(0, 10) ?? null;
+    // 開始時刻（UTC）を日本時間の日付にする。深夜の運動が前日扱いにならないように
+    const date = jstDate(e.interval?.startTime) ?? civilToIso(e.interval?.civilStartTime);
     if (!date) continue;
     const list = out.get(date) ?? [];
     list.push({
@@ -185,8 +193,50 @@ export function exercisesByDate(points: ExercisePoint[] | undefined): Map<string
       minutes: durationToMinutes(e.activeDuration),
       kcal: num(e.metricsSummary?.caloriesKcal),
       steps: num(e.metricsSummary?.steps),
+      avg_hr: num(e.metricsSummary?.averageHeartRateBeatsPerMinute),
+      azm: num(e.metricsSummary?.activeZoneMinutes),
     });
     out.set(date, list);
+  }
+  return out;
+}
+
+/** RFC3339 の時刻 → 日本時間の日付（YYYY-MM-DD） */
+export function jstDate(iso: string | undefined): string | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return null;
+  return new Date(t + 9 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+interface DailyMetricPoint {
+  dailyRestingHeartRate?: { date?: Partial<CivilDate>; beatsPerMinute?: string | number };
+  dailyHeartRateVariability?: {
+    date?: Partial<CivilDate>;
+    averageHeartRateVariabilityMilliseconds?: number | string;
+  };
+}
+
+/** daily-resting-heart-rate の一覧 → 日付 → 拍/分 */
+export function restingHrByDate(points: DailyMetricPoint[] | undefined): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const p of points ?? []) {
+    const r = p.dailyRestingHeartRate;
+    const date = civilToIso({ date: r?.date });
+    const v = num(r?.beatsPerMinute);
+    if (date && v !== null && v > 0) out.set(date, Math.round(v));
+  }
+  return out;
+}
+
+/** daily-heart-rate-variability の一覧 → 日付 → RMSSD(ms) */
+export function hrvByDate(points: DailyMetricPoint[] | undefined): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const p of points ?? []) {
+    const r = p.dailyHeartRateVariability;
+    const date = civilToIso({ date: r?.date });
+    const v = num(r?.averageHeartRateVariabilityMilliseconds);
+    if (date && v !== null && v > 0) out.set(date, Math.round(v * 10) / 10);
   }
   return out;
 }

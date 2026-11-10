@@ -32,7 +32,7 @@ type NavItem = {
 const mainItems: NavItem[] = [
   { href: '/', label: '今日', icon: Home },
   { href: '/log', label: '食事', icon: Utensils },
-  { href: '/workout', label: '筋トレ', icon: Dumbbell },
+  { href: '/workout', label: '運動', icon: Dumbbell },
   { href: '/trend', label: '推移', icon: Sparkles },
 ];
 

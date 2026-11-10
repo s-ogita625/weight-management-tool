@@ -12,6 +12,8 @@ import { sql } from '@/lib/db';
 import {
   distanceToKm,
   exercisesByDate,
+  hrvByDate,
+  restingHrByDate,
   rollupByDate,
   sleepByWakeDate,
   toCivilDate,
@@ -24,10 +26,19 @@ const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const REVOKE_URL = 'https://oauth2.googleapis.com/revoke';
 const API = 'https://health.googleapis.com/v4/users/me';
+export const HEALTH_METRICS_SCOPE =
+  'https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly';
+
+/** 保存済みのスコープに安静時心拍・HRV の権限が含まれているか */
+export function hasHealthMetricsScope(scopes: string | null | undefined): boolean {
+  return (scopes ?? '').split(/\s+/).includes(HEALTH_METRICS_SCOPE);
+}
 
 export const GOOGLE_HEALTH_SCOPES = [
   'https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly',
   'https://www.googleapis.com/auth/googlehealth.sleep.readonly',
+  // 安静時心拍・HRV（回復度＝疲労度の推定に使う）
+  HEALTH_METRICS_SCOPE,
 ];
 
 export function googleHealthConfigured(): boolean {
@@ -225,6 +236,21 @@ export async function syncGoogleHealth(userId: string, days = 7): Promise<{ days
     const sleep = sleepByWakeDate(sleepPoints as never);
     const exercises = exercisesByDate(exercisePoints as never);
 
+    // 安静時心拍・HRV（権限がない＝再連携前なら取得しない）
+    const scopeRows = (await sql`
+      select scopes from health_connections where user_id = ${userId}
+    `) as unknown as Array<{ scopes: string }>;
+    let rhr = new Map<string, number>();
+    let hrv = new Map<string, number>();
+    if (hasHealthMetricsScope(scopeRows[0]?.scopes)) {
+      const [rhrPoints, hrvPoints] = await Promise.all([
+        listAll(token, 'daily-resting-heart-rate', `daily_resting_heart_rate.date >= "${start}" AND daily_resting_heart_rate.date < "${endEx}"`),
+        listAll(token, 'daily-heart-rate-variability', `daily_heart_rate_variability.date >= "${start}" AND daily_heart_rate_variability.date < "${endEx}"`),
+      ]);
+      rhr = restingHrByDate(rhrPoints as never);
+      hrv = hrvByDate(hrvPoints as never);
+    }
+
     let saved = 0;
     for (let d = start; d <= today; d = addDays(d, 1)) {
       const sl = sleep.get(d);
@@ -264,6 +290,12 @@ export async function syncGoogleHealth(userId: string, days = 7): Promise<{ days
           light_minutes = excluded.light_minutes, awake_minutes = excluded.awake_minutes,
           exercises = excluded.exercises, synced_at = now()
       `;
+      if (rhr.has(d) || hrv.has(d)) {
+        await sql`
+          update wearable_daily set resting_hr = ${rhr.get(d) ?? null}, hrv_ms = ${hrv.get(d) ?? null}
+          where user_id = ${userId} and date = ${d}
+        `;
+      }
       if (row.sleep_minutes !== null) {
         const hours = Math.round((row.sleep_minutes / 60) * 2) / 2; // 0.5時間刻み（朝の記録と同じ）
         await sql`

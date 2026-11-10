@@ -4,7 +4,6 @@
  */
 
 import { addDays, correlation, daysBetween, linearRegression } from '@/lib/stats';
-import type { BodyPartBalance, PersonalRecord } from '@/lib/workout-analysis';
 
 export interface WeightRow {
   date: string;
@@ -275,44 +274,6 @@ export function weeklyReport(
     prevAvgSleep: sleepPrev === null ? null : r1(sleepPrev),
     highlights,
   };
-}
-
-// ------------------------------------------------------------------
-// 筋トレ由来の気づき（PR・部位の偏り）
-// ------------------------------------------------------------------
-export function workoutInsights(
-  prs: PersonalRecord[],
-  balance: BodyPartBalance[],
-  today: string,
-  hasRecentWorkouts: boolean,
-): Insight[] {
-  const out: Insight[] = [];
-  if (prs.length > 0) {
-    out.push({
-      id: 'pr',
-      tone: 'success',
-      title: `自己ベスト更新 🎉 ${prs.length}種目`,
-      body: prs
-        .slice(0, 3)
-        .map((p) => `${p.name}：推定1RM ${p.previousBest} → ${p.e1rm}kg`)
-        .join(' / '),
-    });
-  }
-  if (hasRecentWorkouts) {
-    const neglected = balance.filter(
-      (b) => ['legs', 'chest', 'back', 'shoulders'].includes(b.bodyPart) &&
-        (b.lastDate === null || daysBetween(b.lastDate, today) >= 14),
-    );
-    if (neglected.length > 0) {
-      out.push({
-        id: 'balance',
-        tone: 'warning',
-        title: `${neglected.map((n) => n.label).join('・')}を2週間以上やっていません`,
-        body: '脚は全身の筋肉の約半分。週1回でも入れると消費カロリーと代謝の維持に効きます。',
-      });
-    }
-  }
-  return out;
 }
 
 // ------------------------------------------------------------------
