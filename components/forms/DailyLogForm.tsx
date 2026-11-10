@@ -5,10 +5,8 @@ import { useActionState, useEffect, useRef, useState } from 'react';
 import { saveDailyLogAction } from '@/app/actions/daily-log';
 import { dateInJST } from '@/lib/date';
 import {
-  BOWEL_LABELS,
   FATIGUE_LABELS,
   QUALITY_LABELS,
-  type Bowel,
   type DailyLog,
 } from '@/lib/types';
 
@@ -28,7 +26,6 @@ interface Props {
   } | null;
 }
 
-const BOWELS: Bowel[] = ['none', 'soft', 'normal', 'firm', 'diarrhea'];
 
 export default function DailyLogForm({ initial, previous, fitbitSleep }: Props) {
   const sleepFromFitbit = Boolean(fitbitSleep?.connected);
@@ -57,32 +54,12 @@ export default function DailyLogForm({ initial, previous, fitbitSleep }: Props) 
   );
   const [fatigue, setFatigue] = useState<number | null>(initial?.fatigue ?? null);
   const [mood, setMood] = useState<number | null>(initial?.mood ?? null);
-  const [bowel, setBowel] = useState<Bowel | ''>(initial?.bowel ?? '');
-  const [memo, setMemo] = useState(initial?.memo ?? '');
-
-  // カスタム項目
-  type Custom = { key: string; value: string };
-  const initialCustom: Custom[] = initial?.custom_fields
-    ? Object.entries(initial.custom_fields).map(([k, v]) => ({
-        key: k,
-        value: String(v),
-      }))
-    : [];
-  const [customs, setCustoms] = useState<Custom[]>(initialCustom);
-
   useEffect(() => {
     if (state && 'ok' in state && state.ok) {
       router.refresh();
     }
   }, [state, router]);
 
-  const setCustom = (i: number, patch: Partial<Custom>) => {
-    setCustoms((arr) => arr.map((c, idx) => (idx === i ? { ...c, ...patch } : c)));
-  };
-  const addCustom = () =>
-    setCustoms((arr) => [...arr, { key: '', value: '' }]);
-  const removeCustom = (i: number) =>
-    setCustoms((arr) => arr.filter((_, idx) => idx !== i));
 
   return (
     <form action={formAction} ref={formRef} className="space-y-5">
@@ -148,7 +125,6 @@ export default function DailyLogForm({ initial, previous, fitbitSleep }: Props) 
             }
             setFatigue(previous.fatigue ?? null);
             setMood(previous.mood ?? null);
-            setBowel(previous.bowel ?? '');
           }}
           className="w-full h-11 rounded-xl border border-[#a3ff12]/40 bg-[#a3ff12]/10 text-sm font-semibold text-[#a3ff12]"
         >
@@ -211,92 +187,6 @@ export default function DailyLogForm({ initial, previous, fitbitSleep }: Props) 
         onChange={setMood}
         labels={QUALITY_LABELS}
       />
-
-      {/* 便通 */}
-      <div>
-        <label className="block text-sm font-medium mb-2">便通</label>
-        <input type="hidden" name="bowel" value={bowel} />
-        <div className="grid grid-cols-5 gap-2">
-          {BOWELS.map((b) => (
-            <button
-              key={b}
-              type="button"
-              onClick={() => setBowel(bowel === b ? '' : b)}
-              className={`h-11 rounded-xl border text-sm font-medium ${
-                bowel === b
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white border-gray-300 text-gray-700'
-              }`}
-            >
-              {BOWEL_LABELS[b]}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <hr className="border-gray-200" />
-
-      {/* メモ */}
-      <div>
-        <label className="block text-sm font-medium mb-1">メモ（任意）</label>
-        <textarea
-          name="memo"
-          rows={2}
-          value={memo}
-          onChange={(e) => setMemo(e.target.value)}
-          placeholder="今日の体調、特記事項など"
-          className="w-full px-4 py-3 rounded-xl border border-gray-300 bg-white"
-        />
-      </div>
-
-      {/* カスタム項目 */}
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <label className="text-sm font-medium">追加項目（任意）</label>
-          <button
-            type="button"
-            onClick={addCustom}
-            className="text-xs text-blue-600 hover:underline"
-          >
-            + 項目追加
-          </button>
-        </div>
-        {customs.length === 0 && (
-          <p className="text-xs text-gray-500">
-            必要に応じて自由な項目（例：水分量、足の張り）を追加できます。
-          </p>
-        )}
-        {customs.map((c, i) => (
-          <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2 mb-2">
-            <input
-              type="text"
-              name="custom_key"
-              value={c.key}
-              onChange={(e) => setCustom(i, { key: e.target.value })}
-              placeholder="項目名"
-              className="h-11 px-3 rounded-xl border border-gray-300 bg-white"
-              maxLength={50}
-            />
-            <input
-              type="text"
-              name="custom_value"
-              value={c.value}
-              onChange={(e) => setCustom(i, { value: e.target.value })}
-              placeholder="値"
-              className="h-11 px-3 rounded-xl border border-gray-300 bg-white"
-              maxLength={200}
-            />
-            <button
-              type="button"
-              onClick={() => removeCustom(i)}
-              className="text-xs text-red-500 hover:text-red-700 px-2"
-              aria-label="削除"
-            >
-              ✕
-            </button>
-          </div>
-        ))}
-      </div>
 
       {state && 'error' in state && state.error && (
         <p className="text-sm text-red-600">{state.error}</p>
