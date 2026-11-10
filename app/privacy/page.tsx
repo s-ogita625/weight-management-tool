@@ -12,7 +12,7 @@ export default function PrivacyPage() {
         <li>ログイン用のメールアドレスとパスワード（パスワードはハッシュ化して保存）</li>
         <li>利用者が入力した体重・体脂肪率・体調・食事の記録（以前に入力された水分・筋トレの記録を含む）</li>
         <li>
-          Google Health API と連携した場合、Google Health に保存されている歩数・消費カロリー・距離・アクティブゾーン分・睡眠・運動・安静時心拍・心拍変動（HRV）の記録（読み取りのみ）
+          Google Health API と連携した場合、Google Health に保存されている歩数・消費カロリー・距離・アクティブゾーン分・睡眠・運動・安静時心拍・心拍変動（HRV）・体重・体脂肪率の記録（読み取りのみ）
         </li>
       </ul>
       <h2 className="pt-2 text-base font-bold text-white">利用目的</h2>

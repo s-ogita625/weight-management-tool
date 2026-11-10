@@ -30,10 +30,12 @@ export default async function HealthSettingsPage({
       from health_connections where user_id = ${userId}
     `.catch(() => []),
     sql`
-      select to_char(date, 'YYYY-MM-DD') as date, steps, total_kcal::float as total_kcal, sleep_minutes,
-             resting_hr, hrv_ms::float as hrv_ms
-      from wearable_daily where user_id = ${userId}
-      order by date desc limit 7
+      select to_char(w.date, 'YYYY-MM-DD') as date, w.steps, w.total_kcal::float as total_kcal, w.sleep_minutes,
+             w.resting_hr, w.hrv_ms::float as hrv_ms, l.weight_kg::float as weight_kg
+      from wearable_daily w
+      left join daily_logs l on l.user_id = w.user_id and l.date = w.date
+      where w.user_id = ${userId}
+      order by w.date desc limit 7
     `.catch(() => []),
   ]);
   const conn = (connRows as unknown as Array<{
@@ -49,6 +51,7 @@ export default async function HealthSettingsPage({
     sleep_minutes: number | null;
     resting_hr: number | null;
     hrv_ms: number | null;
+    weight_kg: number | null;
   }>;
   const fmt = (iso: string | null) =>
     iso ? new Date(iso).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }) : '-';
@@ -61,7 +64,7 @@ export default async function HealthSettingsPage({
           <Watch size={22} className="text-[#a3ff12]" /> Fitbit / Google Health 連携
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-slate-300">
-          Fitbit Air などで計測した歩数・消費カロリー・睡眠・運動・安静時心拍・HRV を、Google Health API から毎朝7時に自動で取り込みます。
+          Fitbit Air などで計測した歩数・消費カロリー・睡眠・運動・安静時心拍・HRV と、体組成計アプリ（eufyLife など）からヘルスケア経由で届いた体重・体脂肪率を、Google Health API から毎朝7時に自動で取り込みます。
           連携中は睡眠の入力欄がなくなり、運動は Fitbit の記録を表示し、疲労度は心拍・HRV・睡眠から推定します。
         </p>
       </div>
@@ -141,6 +144,7 @@ export default async function HealthSettingsPage({
                 <th className="text-right font-semibold">睡眠</th>
                 <th className="text-right font-semibold">安静時心拍</th>
                 <th className="text-right font-semibold">HRV</th>
+                <th className="text-right font-semibold">体重</th>
               </tr>
             </thead>
             <tbody>
@@ -154,6 +158,7 @@ export default async function HealthSettingsPage({
                   </td>
                   <td className="py-1.5 text-right">{r.resting_hr ?? '-'}</td>
                   <td className="py-1.5 text-right">{r.hrv_ms ? `${Math.round(r.hrv_ms)}ms` : '-'}</td>
+                  <td className="py-1.5 text-right">{r.weight_kg ? r.weight_kg.toFixed(1) : '-'}</td>
                 </tr>
               ))}
             </tbody>
