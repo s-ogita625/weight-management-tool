@@ -283,6 +283,7 @@ export function reminderInsight(
   nowHHMM: string,
   todayWeightLogged: boolean,
   todayMealEntries: number,
+  autoWeight = false,
 ): Insight | null {
   const hour = Number(nowHHMM.slice(0, 2));
   if (hour >= 20 && todayMealEntries < 2) {
@@ -298,7 +299,9 @@ export function reminderInsight(
       id: 'weight-reminder',
       tone: 'info',
       title: '今日の体重がまだです',
-      body: '体重だけなら10秒。下の体重カードからどうぞ。',
+      body: autoWeight
+        ? '体重計に乗ると自動で記録されます。'
+        : '体重だけなら10秒。下の体重カードからどうぞ。',
     };
   }
   return null;

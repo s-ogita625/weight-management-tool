@@ -14,19 +14,16 @@ import {
   type QuickMealItem,
 } from '@/app/actions/quick';
 import { nowAt, sendOrQueue } from '@/lib/offline-queue';
-import { MEAL_TYPE_ICONS, MEAL_TYPE_LABELS, type MealType } from '@/lib/types';
 
 export interface MealSetView {
   id: string;
   name: string;
-  meal_type: MealType | null;
   items: QuickMealItem[];
 }
 
 export interface TodayMeal {
   id: string;
   time: string | null;
-  meal_type: MealType | null;
   food_name: string | null;
   calories: number;
 }
@@ -35,10 +32,8 @@ interface Props {
   frequent: QuickMealItem[];
   sets: MealSetView[];
   today: TodayMeal[];
-  /** 今の時間帯の食事区分 */
-  currentMealType: MealType;
-  /** セット保存の候補にする区分（今日2品以上記録された区分） */
-  savableTypes: MealType[];
+  /** 今日2品以上記録していれば、セットとして保存できる */
+  canSaveSet: boolean;
   /** ざっくり記録（軽め・普通・多め）の1食分 */
   roughItems: QuickMealItem[];
 }
@@ -49,8 +44,7 @@ export default function QuickMeals({
   frequent,
   sets,
   today,
-  currentMealType,
-  savableTypes,
+  canSaveSet,
   roughItems,
 }: Props) {
   const router = useRouter();
@@ -108,12 +102,12 @@ export default function QuickMeals({
     });
   };
 
-  const saveSet = (type: MealType) => {
-    const name = window.prompt('セット名', `いつもの${MEAL_TYPE_LABELS[type]}`);
+  const saveSet = () => {
+    const name = window.prompt('セット名', 'いつものメニュー');
     if (!name) return;
     setError(null);
     startTransition(async () => {
-      const res = await saveMealSetFromTodayAction(type, name);
+      const res = await saveMealSetFromTodayAction(name);
       if ('error' in res) setError(res.error);
       router.refresh();
     });
@@ -144,9 +138,6 @@ export default function QuickMeals({
           </span>
           食事をワンタップ記録
         </div>
-        <span className="text-[11px] text-slate-400">
-          {MEAL_TYPE_ICONS[currentMealType]} {MEAL_TYPE_LABELS[currentMealType]}として記録
-        </span>
       </div>
 
       {sets.length > 0 && (
@@ -252,7 +243,7 @@ export default function QuickMeals({
         href="/log"
         className="mt-2 flex h-11 items-center justify-center gap-2 rounded-lg border border-white/10 text-xs font-semibold text-slate-300"
       >
-        <Search size={14} /> ほかのメニュー・写真・手入力
+        <Search size={14} /> ほかのメニュー・写真・カロリーとPFCを入力
       </Link>
 
       {error && <p className="mt-2 text-xs text-rose-300">{error}</p>}
@@ -263,7 +254,6 @@ export default function QuickMeals({
           <ul className="divide-y divide-white/5 rounded-lg border border-white/10">
             {today.map((meal) => (
               <li key={meal.id} className="flex items-center gap-2 px-3 py-2 text-xs">
-                <span>{meal.meal_type ? MEAL_TYPE_ICONS[meal.meal_type] : '🍽️'}</span>
                 <span className="w-10 shrink-0 tabular-nums text-slate-500">{meal.time ?? ''}</span>
                 <span className="min-w-0 flex-1 truncate text-slate-200">
                   {meal.food_name ?? '（名称なし）'}
@@ -280,19 +270,16 @@ export default function QuickMeals({
               </li>
             ))}
           </ul>
-          {savableTypes.length > 0 && (
+          {canSaveSet && (
             <div className="mt-2 flex flex-wrap gap-2">
-              {savableTypes.map((type) => (
-                <button
-                  key={type}
-                  type="button"
-                  onClick={() => saveSet(type)}
-                  disabled={pending}
-                  className="flex items-center gap-1 rounded-full border border-white/10 px-3 py-1.5 text-[11px] text-slate-300"
-                >
-                  <Layers size={12} /> 今日の{MEAL_TYPE_LABELS[type]}をセット保存
-                </button>
-              ))}
+              <button
+                type="button"
+                onClick={saveSet}
+                disabled={pending}
+                className="flex items-center gap-1 rounded-full border border-white/10 px-3 py-1.5 text-[11px] text-slate-300"
+              >
+                <Layers size={12} /> 今日の記録をセット保存
+              </button>
             </div>
           )}
         </div>

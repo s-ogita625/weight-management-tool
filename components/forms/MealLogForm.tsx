@@ -7,26 +7,7 @@ import AiMealEstimator, {
   type AiEstimate,
 } from '@/components/forms/AiMealEstimator';
 import MealSuggestPicker from '@/components/forms/MealSuggestPicker';
-import { dateInJST, timeInJST } from '@/lib/date';
-import { MEAL_TYPE_ICONS, MEAL_TYPE_LABELS, type MealType } from '@/lib/types';
-
-function suggestMealType(): MealType {
-  const h = Number(timeInJST().slice(0, 2));
-  if (h >= 5 && h < 10) return 'breakfast';
-  if (h >= 10 && h < 14) return 'lunch';
-  if (h >= 14 && h < 17) return 'snack';
-  if (h >= 17 && h < 22) return 'dinner';
-  return 'snack';
-}
-
-const MEAL_TYPES: MealType[] = [
-  'breakfast',
-  'lunch',
-  'dinner',
-  'snack',
-  'pre_workout',
-  'post_workout',
-];
+import { dateInJST } from '@/lib/date';
 
 function fmtNum(n: number): string {
   // 整数なら整数、小数があれば小数1桁まで
@@ -40,8 +21,6 @@ export default function MealLogForm() {
   const formRef = useRef<HTMLFormElement>(null);
 
   const [date, setDate] = useState<string>(dateInJST());
-  const [time, setTime] = useState<string>(timeInJST());
-  const [mealType, setMealType] = useState<MealType>(suggestMealType());
   const [foodName, setFoodName] = useState<string>('');
   const [calories, setCalories] = useState<string>('0');
   const [protein, setProtein] = useState<string>('0');
@@ -53,8 +32,6 @@ export default function MealLogForm() {
 
   const resetForm = () => {
     setDate(dateInJST());
-    setTime(timeInJST());
-    setMealType(suggestMealType());
     setFoodName('');
     setCalories('0');
     setProtein('0');
@@ -80,9 +57,6 @@ export default function MealLogForm() {
     setProtein(fmtNum(s.protein_g));
     setFat(fmtNum(s.fat_g));
     setCarbs(fmtNum(s.carbs_g));
-    if (s.last_meal_type) {
-      setMealType(s.last_meal_type as MealType);
-    }
     setAppliedFromSuggestion(s.food_name);
   };
 
@@ -92,14 +66,11 @@ export default function MealLogForm() {
     setProtein(fmtNum(e.protein_g));
     setFat(fmtNum(e.fat_g));
     setCarbs(fmtNum(e.carbs_g));
-    if (e.meal_type) setMealType(e.meal_type);
     setAppliedFromSuggestion(`AI推定: ${e.food_name}`);
   };
 
   return (
     <form action={formAction} ref={formRef} className="space-y-4">
-      <input type="hidden" name="meal_type" value={mealType} />
-
       <div className="grid grid-cols-1 gap-2">
         <AiMealEstimator onApply={handleAiEstimate} />
         <MealSuggestPicker onPick={handlePickSuggestion} />
@@ -127,49 +98,15 @@ export default function MealLogForm() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-sm font-medium mb-1">日付</label>
-          <input
-            type="date"
-            name="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="w-full h-12 px-3 rounded-xl border border-gray-300 bg-white"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">時刻</label>
-          <input
-            type="time"
-            name="time"
-            value={time}
-            onChange={(e) => setTime(e.target.value)}
-            className="w-full h-12 px-3 rounded-xl border border-gray-300 bg-white"
-          />
-        </div>
-      </div>
-
-      {/* 食事区分 */}
       <div>
-        <label className="block text-sm font-medium mb-2">食事区分</label>
-        <div className="grid grid-cols-3 gap-2">
-          {MEAL_TYPES.map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setMealType(t)}
-              className={`h-12 rounded-xl border text-sm font-medium ${
-                mealType === t
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white border-gray-300 text-gray-700'
-              }`}
-            >
-              <span className="mr-1">{MEAL_TYPE_ICONS[t]}</span>
-              {MEAL_TYPE_LABELS[t]}
-            </button>
-          ))}
-        </div>
+        <label className="block text-sm font-medium mb-1">日付</label>
+        <input
+          type="date"
+          name="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          className="w-full h-12 px-3 rounded-xl border border-gray-300 bg-white"
+        />
       </div>
 
       {/* 料理名 */}
@@ -191,34 +128,15 @@ export default function MealLogForm() {
         />
       </div>
 
-      <NF
-        label="カロリー"
-        suffix="kcal"
-        name="calories"
-        value={calories}
-        onChange={setCalories}
-      />
-      <NF
-        label="タンパク質"
-        suffix="g"
-        name="protein_g"
-        value={protein}
-        onChange={setProtein}
-      />
-      <NF
-        label="脂質"
-        suffix="g"
-        name="fat_g"
-        value={fat}
-        onChange={setFat}
-      />
-      <NF
-        label="炭水化物"
-        suffix="g"
-        name="carbs_g"
-        value={carbs}
-        onChange={setCarbs}
-      />
+      <div className="grid grid-cols-2 gap-3">
+        <NF label="カロリー" suffix="kcal" name="calories" value={calories} onChange={setCalories} />
+        <NF label="タンパク質 P" suffix="g" name="protein_g" value={protein} onChange={setProtein} />
+        <NF label="脂質 F" suffix="g" name="fat_g" value={fat} onChange={setFat} />
+        <NF label="炭水化物 C" suffix="g" name="carbs_g" value={carbs} onChange={setCarbs} />
+      </div>
+      <p className="-mt-2 text-xs text-gray-500">
+        カロリーを空欄（0）にすると、PFC から自動で計算します。
+      </p>
 
       {state && 'error' in state && state.error && (
         <p className="text-sm text-red-600">{state.error}</p>

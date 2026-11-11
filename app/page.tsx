@@ -34,9 +34,8 @@ import { buildCheatDayPlan } from '@/lib/cheat-day';
 import { dateInJST, timeInJST } from '@/lib/date';
 import { sql } from '@/lib/db';
 import { pickFunComparisons } from '@/lib/fun-foods';
-import { inferMealType } from '@/lib/meal-time';
 import { addDays, daysBetween } from '@/lib/stats';
-import type { DailyLog, MealType, Profile } from '@/lib/types';
+import type { DailyLog, Profile } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -88,7 +87,7 @@ export default async function Home() {
   }
 
   const today = dateInJST();
-  const currentMealType = inferMealType(timeInJST());
+  const nowTime = timeInJST();
 
   const [
     profileRowsRaw,
@@ -112,23 +111,23 @@ export default async function Home() {
       limit 60
     `,
     sql`
-      select to_char(date, 'YYYY-MM-DD') as date, weight_kg, sleep_hours, sleep_quality, fatigue, mood
+      select to_char(date, 'YYYY-MM-DD') as date, weight_kg, body_fat_pct, sleep_hours, sleep_quality, fatigue, mood
       from daily_logs
       where user_id = ${userId} and date = ${today}
       limit 1
     `,
     sql`
-      select id, to_char(time, 'HH24:MI') as time, meal_type, food_name,
+      select id, to_char(time, 'HH24:MI') as time, food_name,
              calories::float as calories, protein_g::float as protein_g,
              fat_g::float as fat_g, carbs_g::float as carbs_g
       from meal_logs
       where user_id = ${userId} and date = ${today}
       order by time nulls last, created_at
     `,
-    // よく食べるメニュー：回数 + 今の時間帯（朝食など）での回数を重み付けして並べる
+    // よく食べるメニュー：回数 + 今の時刻の前後2時間に食べた回数を重み付けして並べる
     sql`
       with base as (
-        select food_name, meal_type, calories, protein_g, fat_g, carbs_g, date, created_at
+        select food_name, time, calories, protein_g, fat_g, carbs_g, date, created_at
         from meal_logs
         where user_id = ${userId} and food_name is not null and food_name <> ''
           and food_name not like 'ざっくり記録%'
@@ -143,7 +142,10 @@ export default async function Home() {
       agg as (
         select food_name,
                count(*)::int as uses,
-               count(*) filter (where meal_type = ${currentMealType})::int as type_uses,
+               count(*) filter (
+                 where time is not null
+                   and abs(extract(epoch from (time - ${nowTime}::time))) <= 7200
+               )::int as type_uses,
                max(date) as last_date
         from base
         group by food_name
@@ -154,10 +156,10 @@ export default async function Home() {
       limit 10
     `,
     sql`
-      select id, name, meal_type, items
+      select id, name, items
       from meal_sets
       where user_id = ${userId}
-      order by (meal_type = ${currentMealType}) desc nulls last, created_at
+      order by created_at
     `.catch(() => []), // マイグレーション未適用でもホームは表示する
     sql`
       select to_char(date, 'YYYY-MM-DD') as date, weight_kg::float as weight,
@@ -233,6 +235,10 @@ export default async function Home() {
     todayLog?.weight_kg !== null && todayLog?.weight_kg !== undefined
       ? Number(todayLog.weight_kg)
       : null;
+  const todayBodyFat =
+    todayLog?.body_fat_pct !== null && todayLog?.body_fat_pct !== undefined
+      ? Number(todayLog.body_fat_pct)
+      : null;
   // 睡眠時間は Fitbit から自動で入ることがあるので、体調の入力済み判定には使わない
   const hasCondition = Boolean(
     todayLog &&
@@ -256,15 +262,9 @@ export default async function Home() {
     }),
     { calories: 0, protein_g: 0, fat_g: 0, carbs_g: 0 },
   );
-  const typeCounts = new Map<MealType, number>();
-  for (const m of meals) {
-    if (m.meal_type && m.food_name) {
-      typeCounts.set(m.meal_type, (typeCounts.get(m.meal_type) ?? 0) + 1);
-    }
-  }
-  const savableTypes = [...typeCounts.entries()]
-    .filter(([, n]) => n >= 2)
-    .map(([t]) => t);
+  // 今日2品以上記録したら「セットとして保存」を出す（ざっくり記録は除く）
+  const canSaveSet =
+    meals.filter((m) => m.food_name && !m.food_name.startsWith('ざっくり記録')).length >= 2;
 
   const calcResult = calculate({
     heightCm: Number(profile.height_cm),
@@ -340,7 +340,7 @@ export default async function Home() {
   const conditions = (conditionsRaw as unknown as DayCondition[]).reverse();
   const mealDays = mealDaysRaw as unknown as MealDay[];
   const insights: Insight[] = [
-    reminderInsight(timeInJST(), todayWeight !== null, meals.length),
+    reminderInsight(nowTime, todayWeight !== null, meals.length, healthConnected),
     plateauInsight(weights, today, Number(profile.target_weight_kg), basePlan.targetCalories),
     refeedRecoveryInsight(weights, mealDays, today, basePlan.targetCalories, cheatDayPlan.freeDayDates),
   ].filter((i): i is Insight => i !== null);
@@ -424,7 +424,11 @@ export default async function Home() {
         <div className="order-2 min-w-0 empty:hidden">
           {daysSinceLastLog !== null && daysSinceLastLog > 3 && todayWeight === null && (
             <div className="rounded-lg border border-amber-300/35 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
-              前回の記録から <b>{daysSinceLastLog}日</b> 空いています。まずは体重だけでもOK、今日から再開しましょう。
+              {healthConnected ? (
+                <>前回の体重から <b>{daysSinceLastLog}日</b> 空いています。体重計に乗るだけで自動で記録されます。</>
+              ) : (
+                <>前回の記録から <b>{daysSinceLastLog}日</b> 空いています。まずは体重だけでもOK、今日から再開しましょう。</>
+              )}
             </div>
           )}
         </div>
@@ -440,6 +444,8 @@ export default async function Home() {
             ma7={latestPoint?.ma7 ?? null}
             ma7WeeklyDelta={ma7WeeklyDelta}
             estimatedFatigue={recovery ? { value: recovery.fatigue, label: recovery.label } : null}
+            autoWeight={healthConnected}
+            todayBodyFat={todayBodyFat}
           />
         </div>
         <div className="order-5 min-w-0 space-y-3 empty:hidden">
@@ -474,8 +480,7 @@ export default async function Home() {
             frequent={frequentRaw as unknown as QuickMealItem[]}
             sets={setsRaw as unknown as MealSetView[]}
             today={meals}
-            currentMealType={currentMealType}
-            savableTypes={savableTypes}
+            canSaveSet={canSaveSet}
             roughItems={roughItems}
           />
         </div>

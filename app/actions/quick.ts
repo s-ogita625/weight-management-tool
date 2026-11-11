@@ -116,14 +116,14 @@ export async function addMealSetAction(
 ): Promise<{ ok: true; ids: string[] } | { error: string }> {
   const userId = await requireUser();
   const rows = (await sql`
-    select items, meal_type from meal_sets where id = ${setId} and user_id = ${userId}
-  `) as unknown as Array<{ items: QuickMealItem[]; meal_type: MealType | null }>;
+    select items from meal_sets where id = ${setId} and user_id = ${userId}
+  `) as unknown as Array<{ items: QuickMealItem[] }>;
   if (rows.length === 0) return { error: 'セットが見つかりません' };
   const items = (rows[0].items ?? [])
     .map(cleanItem)
     .filter((i): i is QuickMealItem => i !== null);
   if (items.length === 0) return { error: 'セットが空です' };
-  const ids = await insertMeals(userId, items, rows[0].meal_type);
+  const ids = await insertMeals(userId, items);
   revalidateHome();
   return { ok: true, ids };
 }
@@ -139,13 +139,11 @@ export async function undoQuickMealsAction(ids: string[]): Promise<void> {
   revalidateHome();
 }
 
-/** 今日の指定区分（朝食など）の食事をセットとして保存（同名は上書き） */
+/** 今日記録した食事（ざっくり記録を除く）をセットとして保存（同名は上書き） */
 export async function saveMealSetFromTodayAction(
-  mealType: MealType,
   name: string,
 ): Promise<{ ok: true } | { error: string }> {
   const userId = await requireUser();
-  if (!MEAL_TYPES.has(mealType)) return { error: '食事区分が不正です' };
   const setName = String(name ?? '').trim().slice(0, 40);
   if (!setName) return { error: 'セット名を入力してください' };
 
@@ -154,15 +152,15 @@ export async function saveMealSetFromTodayAction(
            calories::float as calories, protein_g::float as protein_g,
            fat_g::float as fat_g, carbs_g::float as carbs_g
     from meal_logs
-    where user_id = ${userId} and date = ${dateInJST()} and meal_type = ${mealType}
-      and food_name is not null and food_name <> ''
+    where user_id = ${userId} and date = ${dateInJST()}
+      and food_name is not null and food_name <> '' and food_name not like 'ざっくり記録%'
     order by time nulls last, created_at
   `) as unknown as QuickMealItem[];
   if (items.length === 0) return { error: '保存できる食事がありません' };
 
   await sql`
     insert into meal_sets (user_id, name, meal_type, items)
-    values (${userId}, ${setName}, ${mealType}, ${JSON.stringify(items)}::jsonb)
+    values (${userId}, ${setName}, null, ${JSON.stringify(items)}::jsonb)
     on conflict (user_id, name) do update set
       meal_type = excluded.meal_type,
       items = excluded.items

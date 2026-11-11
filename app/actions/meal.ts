@@ -3,7 +3,9 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSessionUserId } from '@/lib/auth';
+import { dateInJST, timeInJST } from '@/lib/date';
 import { sql } from '@/lib/db';
+import { inferMealType } from '@/lib/meal-time';
 import type { MealType } from '@/lib/types';
 
 const VALID_MEAL_TYPES = new Set<MealType>([
@@ -21,19 +23,26 @@ export async function addMealAction(_prev: unknown, formData: FormData) {
 
   const date = String(formData.get('date') ?? '');
   const timeRaw = String(formData.get('time') ?? '').trim();
-  const time = timeRaw || null;
+  // 時刻は入力欄なし。今日の記録なら今の時刻を入れる
+  const time = timeRaw || (date === dateInJST() ? timeInJST() : null);
   const mealTypeRaw = String(formData.get('meal_type') ?? '').trim();
+  // 食事区分も入力欄なし。時刻から自動で付ける（AI コーチの分析用）
   const meal_type =
     mealTypeRaw && VALID_MEAL_TYPES.has(mealTypeRaw as MealType)
       ? (mealTypeRaw as MealType)
-      : null;
+      : time
+        ? inferMealType(time)
+        : null;
   const food_name =
     String(formData.get('food_name') ?? '').trim().slice(0, 100) || null;
 
-  const calories = Number(formData.get('calories') ?? 0);
-  const protein_g = Number(formData.get('protein_g') ?? 0);
-  const fat_g = Number(formData.get('fat_g') ?? 0);
-  const carbs_g = Number(formData.get('carbs_g') ?? 0);
+  const kcalInput = Number(formData.get('calories') || 0);
+  const protein_g = Number(formData.get('protein_g') || 0);
+  const fat_g = Number(formData.get('fat_g') || 0);
+  const carbs_g = Number(formData.get('carbs_g') || 0);
+  // カロリー未入力で PFC だけ入れた場合は PFC から計算（P・C 4kcal/g、F 9kcal/g）
+  const calories =
+    kcalInput > 0 ? kcalInput : Math.round(protein_g * 4 + fat_g * 9 + carbs_g * 4);
   const memo = String(formData.get('memo') ?? '').trim() || null;
 
   if (
@@ -48,6 +57,9 @@ export async function addMealAction(_prev: unknown, formData: FormData) {
     carbs_g < 0
   ) {
     return { error: '入力値が不正です' };
+  }
+  if (calories === 0 && !food_name) {
+    return { error: 'カロリーか PFC を入力してください' };
   }
 
   await sql`
