@@ -22,6 +22,10 @@ interface Props {
   ma7WeeklyDelta: number | null;
   /** Fitbit の心拍・HRV・睡眠から推定した疲労度（1〜5） */
   estimatedFatigue?: { value: number; label: string } | null;
+  /** 体重計 → Fitbit → Google Health で自動取り込み中なら、入力欄を出さず表示だけにする */
+  autoWeight?: boolean;
+  /** 今日の体脂肪率（自動取り込み時の表示用） */
+  todayBodyFat?: number | null;
 }
 
 export default function WeightQuickCard({
@@ -32,6 +36,8 @@ export default function WeightQuickCard({
   ma7,
   ma7WeeklyDelta,
   estimatedFatigue = null,
+  autoWeight = false,
+  todayBodyFat = null,
 }: Props) {
   const router = useRouter();
   const [value, setValue] = useState(
@@ -70,6 +76,38 @@ export default function WeightQuickCard({
       router.refresh();
     });
   };
+
+  if (autoWeight) {
+    return (
+      <section className="sport-card p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm font-bold">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-black/25 text-[#a3ff12] ring-1 ring-white/10">
+              <Scale size={17} />
+            </span>
+            体重
+          </div>
+          <span className="text-[10px] text-slate-400">体重計から自動</span>
+        </div>
+        {todayWeight !== null ? (
+          <div className="flex items-baseline justify-between">
+            <span className="text-3xl font-black tabular-nums">
+              {todayWeight.toFixed(1)}
+              <span className="ml-1 text-sm font-semibold text-slate-400">kg</span>
+            </span>
+            {todayBodyFat !== null && (
+              <span className="text-sm font-bold tabular-nums text-slate-300">体脂肪 {todayBodyFat.toFixed(1)}%</span>
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-slate-400">
+            今日はまだ計測していません。体重計に乗ると自動で記録されます（反映まで少し時間がかかります）。
+          </p>
+        )}
+        <Ma7 ma7={ma7} delta={ma7WeeklyDelta} />
+      </section>
+    );
+  }
 
   return (
     <section className="sport-card p-4">
@@ -152,28 +190,7 @@ export default function WeightQuickCard({
         </button>
       )}
 
-      {ma7 !== null && (
-        <div className="mt-3 flex items-center justify-between rounded-lg bg-black/20 px-3 py-2 text-xs">
-          <span className="text-slate-400">7日平均</span>
-          <span className="font-bold tabular-nums">
-            {ma7.toFixed(1)}kg
-            {ma7WeeklyDelta !== null && (
-              <span
-                className={`ml-2 ${
-                  ma7WeeklyDelta < -0.05
-                    ? 'text-[#a3ff12]'
-                    : ma7WeeklyDelta > 0.05
-                      ? 'text-rose-300'
-                      : 'text-slate-400'
-                }`}
-              >
-                {ma7WeeklyDelta > 0 ? '+' : ''}
-                {ma7WeeklyDelta.toFixed(1)}kg / 週
-              </span>
-            )}
-          </span>
-        </div>
-      )}
+      <Ma7 ma7={ma7} delta={ma7WeeklyDelta} />
     </section>
   );
 }
@@ -196,5 +213,27 @@ function StepButton({
     >
       {children}
     </button>
+  );
+}
+
+function Ma7({ ma7, delta }: { ma7: number | null; delta: number | null }) {
+  if (ma7 === null) return null;
+  return (
+    <div className="mt-3 flex items-center justify-between rounded-lg bg-black/20 px-3 py-2 text-xs">
+      <span className="text-slate-400">7日平均</span>
+      <span className="font-bold tabular-nums">
+        {ma7.toFixed(1)}kg
+        {delta !== null && (
+          <span
+            className={`ml-2 ${
+              delta < -0.05 ? 'text-[#a3ff12]' : delta > 0.05 ? 'text-rose-300' : 'text-slate-400'
+            }`}
+          >
+            {delta > 0 ? '+' : ''}
+            {delta.toFixed(1)}kg / 週
+          </span>
+        )}
+      </span>
+    </div>
   );
 }

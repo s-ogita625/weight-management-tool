@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { deleteMealAction } from '@/app/actions/meal';
-import { MEAL_TYPE_ICONS, MEAL_TYPE_LABELS, type MealLog } from '@/lib/types';
+import type { MealLog } from '@/lib/types';
 
 interface Props {
   logs: MealLog[];
@@ -29,12 +29,11 @@ export default function TodayMealList({ logs }: Props) {
       {logs.map((l) => (
         <li key={l.id} className="p-3 flex items-start gap-3">
           <div className="text-2xl leading-none mt-0.5">
-            {l.meal_type ? MEAL_TYPE_ICONS[l.meal_type] : '🍽️'}
+            🍽️
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 text-xs text-gray-500">
               {l.time && <span className="tabular-nums">{l.time}</span>}
-              {l.meal_type && <span>{MEAL_TYPE_LABELS[l.meal_type]}</span>}
             </div>
             {l.food_name && (
               <div className="text-sm font-medium truncate">{l.food_name}</div>
