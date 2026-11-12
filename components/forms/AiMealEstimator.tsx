@@ -55,6 +55,8 @@ export default function AiMealEstimator({ onApply }: Props) {
   const [imageLoading, setImageLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Android では multiple 付きの file input だとカメラが選べないため、撮影専用の input を分ける
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const reset = () => {
     setText('');
@@ -65,6 +67,7 @@ export default function AiMealEstimator({ onApply }: Props) {
     });
     setError(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
   };
 
   const close = () => {
@@ -109,6 +112,7 @@ export default function AiMealEstimator({ onApply }: Props) {
       return [...prev, ...accepted];
     });
     if (fileInputRef.current) fileInputRef.current.value = '';
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
   };
 
   const removeEntry = (id: string) => {
@@ -378,7 +382,7 @@ export default function AiMealEstimator({ onApply }: Props) {
               ) : (
                 <div className="space-y-3 pt-2">
                   <p className="text-xs text-gray-600 leading-relaxed">
-                    複数の食事写真をアップロード／撮影できます。各画像をAIが個別に判定し、合計カロリー・PFCを算出します
+                    カメラで撮影するか、アルバムから複数枚選べます。各画像をAIが個別に判定し、合計カロリー・PFCを算出します
                     （最大{MAX_PHOTOS}枚 / 大きな画像は自動で縮小して送信されます）
                   </p>
 
@@ -387,6 +391,14 @@ export default function AiMealEstimator({ onApply }: Props) {
                     accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,image/*"
                     multiple
                     ref={fileInputRef}
+                    onChange={(e) => addFiles(e.target.files)}
+                    className="hidden"
+                  />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    ref={cameraInputRef}
                     onChange={(e) => addFiles(e.target.files)}
                     className="hidden"
                   />
@@ -444,32 +456,37 @@ export default function AiMealEstimator({ onApply }: Props) {
                     </ul>
                   )}
 
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={entries.length >= MAX_PHOTOS}
-                    className={`w-full rounded-xl border-2 border-dashed text-sm flex flex-col items-center justify-center ${
-                      entries.length === 0 ? 'h-32' : 'h-20'
-                    } ${
-                      entries.length >= MAX_PHOTOS
-                        ? 'border-gray-200 bg-gray-50 text-gray-400'
-                        : 'border-purple-300 bg-purple-50 text-purple-700 hover:bg-purple-100'
-                    }`}
-                  >
-                    <span className="text-2xl">🖼</span>
-                    <span className="font-medium">
-                      {entries.length === 0
-                        ? 'タップして写真を選択 / 撮影'
-                        : entries.length >= MAX_PHOTOS
-                          ? `最大${MAX_PHOTOS}枚に達しました`
-                          : `+ 写真を追加（${entries.length}/${MAX_PHOTOS}）`}
-                    </span>
-                    {entries.length === 0 && (
-                      <span className="text-[10px] text-purple-600/80 mt-0.5">
-                        複数選択可（アルバム or カメラ）
-                      </span>
-                    )}
-                  </button>
+                  {entries.length >= MAX_PHOTOS ? (
+                    <div className="flex h-12 items-center justify-center rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 text-sm text-gray-400">
+                      最大{MAX_PHOTOS}枚に達しました
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      {(
+                        [
+                          ['📷', 'カメラで撮影', cameraInputRef],
+                          ['🖼', 'アルバムから選択', fileInputRef],
+                        ] as const
+                      ).map(([icon, label, ref]) => (
+                        <button
+                          key={label}
+                          type="button"
+                          onClick={() => ref.current?.click()}
+                          className={`flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-purple-300 bg-purple-50 text-sm text-purple-700 hover:bg-purple-100 ${
+                            entries.length === 0 ? 'h-28' : 'h-16'
+                          }`}
+                        >
+                          <span className="text-2xl">{icon}</span>
+                          <span className="font-medium">{label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {entries.length > 0 && entries.length < MAX_PHOTOS && (
+                    <p className="text-center text-[10px] text-gray-500">
+                      {entries.length}/{MAX_PHOTOS}枚。続けて撮影・追加できます
+                    </p>
+                  )}
 
                   <button
                     type="button"
